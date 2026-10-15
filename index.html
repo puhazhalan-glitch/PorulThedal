@@ -1,0 +1,1286 @@
+<!doctype html>
+<html lang="ta">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Explainable Tamil word sense disambiguation: decides which meaning of a word like படி fits a sentence, and shows why.">
+<meta name="theme-color" content="#EEF0F3">
+<title>பொருள் தேடல் — Tamil Word Sense Disambiguation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mukta+Malar:wght@400;500;600;700&family=Noto+Serif+Tamil:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#EEF0F3; --surface:#FFFFFF; --sunk:#F5F6F8; --ink:#18213A; --mute:#586178; --line:#D6DAE3;
+  --accent:#3346A8; --on-accent:#FFFFFF;
+  --target:#C98A0C; --target-tint:#FBEFCD;
+  --win:#0D7A69; --win-tint:#D9F0EA;
+  --other:#8E97AA; --warn:#B4462F; --warn-tint:#F8E3DD;
+  --serif:'Noto Serif Tamil','Latha','Noto Serif',Georgia,serif;
+  --sans:'Mukta Malar','Noto Sans Tamil','Latha',system-ui,sans-serif;
+  --r-s:8px; --r-m:12px; --r-l:18px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#10141F; --surface:#181E2C; --sunk:#141927; --ink:#E7EAF1; --mute:#A1A9BB; --line:#2B3348;
+    --accent:#8D9CFF; --on-accent:#10141F;
+    --target:#F0B940; --target-tint:#43360F;
+    --win:#4FC9B2; --win-tint:#163C36;
+    --other:#6F7891; --warn:#F28C72; --warn-tint:#45231C;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#10141F; --surface:#181E2C; --sunk:#141927; --ink:#E7EAF1; --mute:#A1A9BB; --line:#2B3348;
+  --accent:#8D9CFF; --on-accent:#10141F;
+  --target:#F0B940; --target-tint:#43360F;
+  --win:#4FC9B2; --win-tint:#163C36;
+  --other:#6F7891; --warn:#F28C72; --warn-tint:#45231C;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-left))}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---- top bar ---- */
+.bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
+.bar .wrap{display:flex;align-items:center;gap:20px;height:60px}
+.mark{font-family:var(--serif);font-weight:700;font-size:1.15rem;text-decoration:none;color:var(--ink);white-space:nowrap;display:flex;align-items:center;gap:10px}
+.mark svg{flex:none}
+.nav{display:flex;gap:4px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{color:var(--mute);text-decoration:none;font-size:.93rem;font-weight:500;padding:6px 11px;border-radius:var(--r-s);white-space:nowrap}
+.nav a:hover{color:var(--ink);background:var(--sunk)}
+.nav a[aria-current="true"]{color:var(--ink);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.tools{display:flex;gap:6px;flex:none}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:4px 10px;font-size:.85rem;font-weight:600;color:var(--mute);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.icon-btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-s);width:34px;height:32px;display:grid;place-items:center;cursor:pointer;color:var(--mute)}
+.icon-btn:hover{color:var(--ink)}
+@media (max-width:760px){.nav{display:none}.bar .wrap{justify-content:space-between}}
+
+/* ---- hero / analyzer ---- */
+.hero{padding:44px 0 8px}
+.ps{display:flex;gap:10px;align-items:baseline;color:var(--mute);font-size:.92rem;margin:0 0 14px;flex-wrap:wrap}
+.ps b{color:var(--ink);font-weight:600}
+.ps .code{font-weight:700;color:var(--accent);border:1px solid currentColor;border-radius:6px;padding:0 7px;font-size:.82rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(2rem,5.4vw,3.4rem);line-height:1.2;margin:0 0 12px;letter-spacing:-.01em;max-width:20ch}
+h1 q{quotes:"“" "”";color:var(--target)}
+.lede{margin:0;color:var(--mute);max-width:62ch;font-size:1.05rem}
+.composer{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);padding:6px;box-shadow:0 1px 0 var(--line),0 12px 32px -18px #18213A40}
+.composer textarea{display:block;width:100%;border:0;background:none;resize:vertical;min-height:84px;padding:14px 16px 6px;font-family:var(--serif);font-size:1.3rem;line-height:1.7}
+.composer textarea:focus{outline:none}
+.composer:focus-within{border-color:var(--accent)}
+.c-foot{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;flex-wrap:wrap}
+.c-foot .hint{margin-right:auto}
+.hint{color:var(--mute);font-size:.86rem;margin:0}
+kbd{font-family:inherit;font-size:.8rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--sunk)}
+.btn{border:0;border-radius:10px;padding:9px 18px;font-weight:600;cursor:pointer;background:var(--accent);color:var(--on-accent)}
+.btn:hover{filter:brightness(1.08)}
+.btn.quiet{background:none;color:var(--mute);box-shadow:inset 0 0 0 1px var(--line)}
+.btn.quiet:hover{color:var(--ink)}
+.btn.small{padding:5px 12px;font-size:.88rem}
+.samples{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.samples .hint{margin-right:4px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 13px;font-size:.92rem;cursor:pointer;color:var(--ink);text-align:left}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+
+/* ---- results ---- */
+#results{margin-top:28px;display:flex;flex-direction:column;gap:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);padding:22px}
+.panel-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.panel-h h2,.panel-h h3{margin:0}
+h2{font-family:var(--serif);font-weight:700;font-size:1.55rem;line-height:1.35;margin:0 0 6px}
+h3{font-family:var(--serif);font-weight:700;font-size:1.15rem;line-height:1.4;margin:0}
+.empty{border:1px dashed var(--line);border-radius:var(--r-l);padding:22px;color:var(--mute);background:var(--surface)}
+.empty b{color:var(--ink)}
+
+/* context map — the signature element */
+.map-scroll{overflow-x:auto;margin:6px -6px 0;padding:0 6px 4px}
+.map{position:relative;display:inline-block;min-width:100%}
+.map svg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.toks{display:flex;gap:6px;align-items:flex-start;white-space:nowrap;padding-bottom:4px}
+.tok{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.tok .w{font-family:var(--serif);font-size:1.45rem;line-height:1.55;padding:2px 9px;border-radius:var(--r-s);border:1px solid transparent}
+.tok .cap{font-size:.74rem;color:var(--mute);line-height:1.3;max-width:13em;text-align:center;white-space:normal}
+.tok.tgt .w{background:var(--target-tint);border-color:var(--target);font-weight:700}
+.tok.tgt .cap{color:var(--target);font-weight:600}
+.tok.cw .w{background:var(--win-tint);color:var(--ink)}
+.tok.cw .cap{color:var(--win);font-weight:600}
+.tok.co .w{border:1px dashed var(--other)}
+.tok.plain .w{color:var(--mute)}
+.arc{fill:none;stroke-linecap:round}
+.arc.win{stroke:var(--win)}
+.arc.oth{stroke:var(--other);stroke-dasharray:4 4;opacity:.8}
+.arc-dot{fill:var(--surface);stroke-width:2}
+.arc-w{font-family:var(--sans);font-size:11px;font-weight:700;fill:var(--win)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.84rem;color:var(--mute);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:22px;height:0;border-top:2.5px solid var(--win);display:inline-block}
+.sw.o{border-top:2px dashed var(--other)}
+.sw.t{width:12px;height:12px;border:1.5px solid var(--target);background:var(--target-tint);border-radius:3px}
+
+/* verdict */
+.verdict{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:26px}
+@media (max-width:820px){.verdict{grid-template-columns:minmax(0,1fr);gap:18px}}
+.v-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;grid-column:1/-1;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.v-tok{font-family:var(--serif);font-weight:700;font-size:1.5rem;border-bottom:3px solid var(--target);line-height:1.3}
+.v-root{color:var(--mute);font-size:.9rem}
+.rule{display:inline-block;font-size:.8rem;font-weight:600;border-radius:6px;padding:1px 8px;background:var(--sunk);border:1px solid var(--line);color:var(--ink)}
+.kicker{font-size:.84rem;color:var(--mute);margin:0 0 2px}
+.v-sense{font-family:var(--serif);font-weight:700;font-size:clamp(1.6rem,3.6vw,2.15rem);line-height:1.35;color:var(--win);margin:0}
+.v-sense.unsure{color:var(--warn)}
+.v-gloss{margin:2px 0 0;color:var(--ink)}
+.conf{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-size:.88rem;font-weight:600}
+.conf .meter{display:inline-flex;gap:3px}
+.conf .meter i{width:16px;height:6px;border-radius:3px;background:var(--line)}
+.conf.high .meter i{background:var(--win)}
+.conf.medium .meter i:nth-child(-n+2){background:var(--win)}
+.conf.low{color:var(--warn)}
+.conf.low .meter i:first-child{background:var(--warn)}
+.why{margin:12px 0 0;color:var(--mute);font-size:.97rem}
+.why b{color:var(--ink);font-weight:600}
+.ev{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ev li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:baseline;font-size:.92rem;padding:7px 10px;background:var(--sunk);border-radius:var(--r-s)}
+.ev .k{font-size:.76rem;font-weight:700;border-radius:5px;padding:0 6px;color:var(--win);background:var(--win-tint)}
+.ev .k.m{color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.ev .k.f{color:var(--target);background:var(--target-tint)}
+.ev .n{font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)}
+.rank{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.rank li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;align-items:baseline}
+.rank li[hidden]{display:none}
+.rank .nm{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.rank .gl{font-weight:400;color:var(--mute);font-size:.85rem}
+.rank .sc{font-variant-numeric:tabular-nums;font-size:.88rem;color:var(--mute)}
+.rank .bar-t{grid-column:1/-1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.rank .bar-t i{display:block;height:100%;background:var(--other);border-radius:3px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+.rank li.top .bar-t i{background:var(--win)}
+.rank li.top.unsure .bar-t i{background:var(--warn)}
+.more{margin-top:10px}
+.foot-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+
+/* trace */
+details.trace>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+details.trace>summary::-webkit-details-marker{display:none}
+details.trace>summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--mute);border-bottom:2px solid var(--mute);transform:rotate(-45deg);transition:transform .2s;align-self:center;margin-right:4px}
+details.trace[open]>summary::before{transform:rotate(45deg)}
+.steps{list-style:none;margin:18px 0 0;padding:0;counter-reset:st}
+.steps>li{counter-increment:st;position:relative;padding:0 0 18px 46px}
+.steps>li::before{content:counter(st);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.9rem;background:var(--sunk);border:1px solid var(--line)}
+.steps>li::after{content:"";position:absolute;left:15px;top:32px;bottom:2px;width:1px;background:var(--line)}
+.steps>li:last-child::after{display:none}
+.steps b{display:block;font-weight:600}
+.steps .d{color:var(--mute);font-size:.94rem;overflow-wrap:anywhere}
+.steps .d .tk{display:inline-block;font-family:var(--serif);background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:0 7px;margin:3px 3px 0 0;color:var(--ink)}
+.steps .d .tk.t{background:var(--target-tint);border-color:var(--target)}
+.mini{width:100%;border-collapse:collapse;margin-top:6px;font-size:.88rem}
+.mini th,.mini td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.mini th{color:var(--mute);font-weight:600}
+.mini td.n{font-variant-numeric:tabular-nums;text-align:right}
+.mini tr.top td{color:var(--win);font-weight:700}
+
+/* sections */
+section.block{padding:72px 0 0}
+.sec-lede{color:var(--mute);max-width:66ch;margin:0 0 24px}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:0;padding:0;list-style:none;counter-reset:fl}
+.flow li{counter-increment:fl;padding:18px 18px 18px 0;position:relative;border-top:2px solid var(--line)}
+.flow li::before{content:counter(fl);position:absolute;top:-15px;left:0;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:.88rem}
+.flow b{display:block;margin-top:12px;font-weight:600}
+.flow span{display:block;color:var(--mute);font-size:.93rem}
+.flow .eg{margin-top:8px;font-family:var(--serif);font-size:.95rem;color:var(--ink)}
+@media (max-width:820px){.flow{grid-template-columns:1fr 1fr;row-gap:22px}}
+@media (max-width:480px){.flow{grid-template-columns:1fr}}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:22px}
+@media (max-width:820px){.two{grid-template-columns:minmax(0,1fr)}}
+.formula{font-family:var(--serif);font-size:1.05rem;line-height:2;background:var(--sunk);border-radius:var(--r-m);padding:14px 16px;margin:12px 0;overflow-x:auto}
+.formula var{font-style:normal;font-weight:700}
+.panel p{margin:8px 0 0}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem}
+.tbl th,.tbl td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-weight:600;color:var(--mute);font-size:.85rem}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .ta{font-family:var(--serif)}
+.tbl-scroll{overflow-x:auto}
+.ok{color:var(--win);font-weight:700}.bad{color:var(--warn);font-weight:700}
+ul.plain{margin:10px 0 0;padding-left:1.1em;color:var(--mute)}
+ul.plain li{margin:4px 0}
+ul.plain b{color:var(--ink);font-weight:600}
+
+/* evaluation */
+.scorebar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:var(--r-l);background:var(--surface);overflow:hidden}
+.scorebar>div{padding:16px 18px;border-left:1px solid var(--line)}
+.scorebar>div:first-child{border-left:0}
+.scorebar .v{font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.scorebar .v small{font-size:.95rem;color:var(--mute);font-weight:500}
+.scorebar .l{color:var(--mute);font-size:.86rem}
+.scorebar .v.good{color:var(--win)}
+@media (max-width:700px){.scorebar{grid-template-columns:1fr 1fr}.scorebar>div:nth-child(3){border-left:0}.scorebar>div:nth-child(n+3){border-top:1px solid var(--line)}}
+.abl td:nth-child(2){width:40%}.abl td:first-child{min-width:12.5em}
+.abl .track{height:10px;background:var(--sunk);border-radius:5px;overflow:hidden}
+.abl .track i{display:block;height:100%;background:var(--other);border-radius:5px}
+.abl tr.full .track i{background:var(--win)}
+.abl tr.full td{font-weight:700}
+.layers{display:inline-flex;gap:4px;flex-wrap:wrap}
+.layers span{font-size:.76rem;border-radius:5px;padding:0 6px;border:1px solid var(--line);color:var(--mute)}
+.layers span.on{border-color:var(--ink);color:var(--ink);font-weight:600}
+.cm{border-collapse:separate;border-spacing:3px;font-size:.84rem}
+.cm th{font-weight:600;color:var(--mute);padding:4px 6px;text-align:left;vertical-align:bottom}
+.cm thead th{writing-mode:vertical-rl;transform:rotate(180deg);height:9.5em;text-align:left;white-space:nowrap}
+.cm td{width:28px;height:30px;text-align:center;border-radius:6px;font-weight:700;font-variant-numeric:tabular-nums;background:var(--sunk);color:var(--mute)}
+.cm td.diag{background:var(--win-tint);color:var(--win)}
+.cm td.err{background:var(--warn-tint);color:var(--warn)}
+.cm td.zero{color:transparent}
+details.cases{margin-top:18px}
+details.cases>summary{cursor:pointer;font-weight:600;color:var(--accent)}
+
+/* dictionary */
+.dict-tools{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.search{flex:1 1 260px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px}
+.dict{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:10px;align-items:start}
+.dict details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m)}
+.dict summary{cursor:pointer;padding:12px 16px;display:flex;align-items:baseline;gap:10px;list-style:none}
+.dict summary::-webkit-details-marker{display:none}
+.dict summary .wd{font-family:var(--serif);font-weight:700;font-size:1.2rem}
+.dict summary .ct{color:var(--mute);font-size:.86rem;margin-left:auto}
+.dict ul{list-style:none;margin:0;padding:0 16px 14px;display:flex;flex-direction:column;gap:12px}
+.dict li .sn{font-weight:600;color:var(--win)}
+.dict li .sd{color:var(--mute);font-size:.9rem;display:block}
+.try{border:0;background:none;padding:0;text-align:left;font-family:var(--serif);font-size:.95rem;color:var(--ink);cursor:pointer;border-bottom:1px dotted var(--mute);margin-top:2px}
+.try:hover{color:var(--accent);border-color:var(--accent)}
+.add{margin-top:18px}
+.add form{display:grid;gap:10px;margin-top:12px}
+.add label{font-weight:600;font-size:.92rem}
+.add input,.add textarea{border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:9px 12px;width:100%}
+.add textarea{min-height:7em;resize:vertical}
+.msg{font-size:.9rem;margin:0;color:var(--win)}.msg.err{color:var(--warn)}
+.mine{display:flex;flex-wrap:wrap;gap:8px}
+.mine .chip{cursor:default}
+.mine .x{border:0;background:none;color:var(--warn);cursor:pointer;margin-left:6px;padding:0;font-size:.85rem}
+
+footer{margin:80px 0 0;padding:24px 0 40px;border-top:1px solid var(--line);color:var(--mute);font-size:.88rem}
+footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:.92rem;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){
+  body{font-size:16px}
+  .hero{padding-top:28px}
+  .panel{padding:16px}
+  .composer textarea{font-size:1.15rem}
+  .tok .w{font-size:1.25rem}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <a class="mark" href="#top" aria-label="பொருள் தேடல்">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 21h6v-5h5v-5h5V6h4" fill="none" stroke="var(--target)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23" cy="6" r="2.3" fill="var(--win)"/></svg>
+      <span data-i18n="brand">பொருள் தேடல்</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#analyze" data-i18n="nav.analyze">பகுப்பாய்வு</a>
+      <a href="#method" data-i18n="nav.method">முறை</a>
+      <a href="#evaluation" data-i18n="nav.eval">மதிப்பீடு</a>
+      <a href="#dictionary" data-i18n="nav.dict">அகராதி</a>
+    </nav>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Language">
+        <button type="button" data-lang="ta" aria-pressed="true">தமிழ்</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark mode">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top" class="wrap">
+  <section class="hero" id="analyze" aria-labelledby="h1">
+    <p class="ps"><span class="code">P12</span><b data-i18n="ps.title">ஒரே சொல்லுக்குப் பல பொருள்கள்</b></p>
+    <h1 id="h1" data-i18n-html="hero.h1"><q>படி</q> — படிப்பா, படிக்கட்டா?</h1>
+    <p class="lede" data-i18n="hero.lede">ஒரு தமிழ் வாக்கியத்தை எழுதுங்கள். சொல்லின் இலக்கண வடிவமும் சுற்றியுள்ள சொற்களும் எந்தப் பொருளைச் சுட்டுகின்றன என்று கணினி கணக்கிட்டு, அந்த முடிவுக்கான காரணத்தையும் காட்டும்.</p>
+
+    <div class="composer">
+      <label class="sr" for="sentence" data-i18n="input.label">வாக்கியம்</label>
+      <textarea id="sentence" lang="ta" spellcheck="false" rows="2" data-i18n-ph="input.ph" placeholder="எ.கா. படிக்கட்டில் உட்கார்ந்து படித்தான்."></textarea>
+      <div class="c-foot">
+        <p class="hint" data-i18n-html="input.hint"><kbd>Enter</kbd> அழுத்தினால் பகுப்பாய்வு; புதிய வரிக்கு <kbd>Shift</kbd>+<kbd>Enter</kbd></p>
+        <button class="btn quiet" id="clearBtn" type="button" data-i18n="btn.clear">அழி</button>
+        <button class="btn" id="goBtn" type="button" data-i18n="btn.go">பொருளைக் கண்டறி</button>
+      </div>
+    </div>
+    <div class="samples" id="samples"><span class="hint" data-i18n="samples">முயன்று பாருங்கள்:</span></div>
+  </section>
+
+  <div id="results" aria-live="polite"></div>
+
+  <section class="block" id="method" aria-labelledby="mh">
+    <h2 id="mh" data-i18n="m.h">முறை</h2>
+    <p class="sec-lede" data-i18n="m.lede">இது ஒரு விளக்கமளிக்கக்கூடிய விதி மற்றும் சூழல் அடிப்படையிலான முறை. ஒவ்வொரு முடிவுக்கும் எந்தச் சான்று எவ்வளவு எடை கொடுத்தது என்பதைக் காட்ட முடியும்; அதனால்தான் கருப்புப் பெட்டி மாதிரியைத் தவிர்த்தோம்.</p>
+    <ol class="flow">
+      <li><b data-i18n="m.s1">சொல் பிரிப்பு</b><span data-i18n="m.s1d">வாக்கியத்தைத் தமிழ்ச் சொற்களாகப் பிரித்து, அகராதியில் உள்ள பலபொருள் சொல்லைக் கண்டறிகிறது.</span><span class="eg">படிக்கட்டில் | உட்கார்ந்து | படித்தான்</span></li>
+      <li><b data-i18n="m.s2">வேர் மற்றும் இலக்கணம்</b><span data-i18n="m.s2d">விகுதியை வைத்து வினையா, பெயரா என்று பார்க்கிறது. -த்தான் வினை; -யில், -களில் வேற்றுமை உருபு.</span><span class="eg">படித்தான் → படி + த்த் + ஆன்</span></li>
+      <li><b data-i18n="m.s3">சூழல் சான்று</b><span data-i18n="m.s3d">அருகிலுள்ள சொற்கள் ஒவ்வொரு பொருளுக்கும் எவ்வளவு ஆதரவு தருகின்றன என்று, தூரத்துக்கு ஏற்ப எடை குறைத்துக் கணக்கிடுகிறது.</span><span class="eg">புத்தகம், தேர்வு → படித்தல்</span></li>
+      <li><b data-i18n="m.s4">மதிப்பெண் மற்றும் முடிவு</b><span data-i18n="m.s4d">அதிக மதிப்பெண் பெற்ற பொருளைத் தேர்கிறது. முதல் இரண்டுக்கும் இடைவெளி குறைவென்றால் “உறுதியில்லை” என்று சொல்கிறது.</span><span class="eg">இடைவெளி &lt; 0.6 → உறுதியில்லை</span></li>
+    </ol>
+
+    <div class="two">
+      <div class="panel">
+        <h3 data-i18n="m.f.h">மதிப்பெண் சூத்திரம்</h3>
+        <div class="formula" id="formula"></div>
+        <ul class="plain" id="formulaNotes"></ul>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="m.r.h">இலக்கண விதிகள்</h3>
+        <p class="hint" data-i18n="m.r.d">சூழல் சொற்கள் இல்லாவிட்டாலும், சொல்லின் விகுதியே பொருளைச் சொல்லிவிடும்.</p>
+        <div class="tbl-scroll"><table class="tbl" id="rulesTable"></table></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <h3 data-i18n="m.l.h">வரம்புகளும் அடுத்த கட்டமும்</h3>
+      <ul class="plain" id="limits"></ul>
+    </div>
+  </section>
+
+  <section class="block" id="evaluation" aria-labelledby="eh">
+    <h2 id="eh" data-i18n="e.h">மதிப்பீடு</h2>
+    <p class="sec-lede" data-i18n="e.lede">கீழே உள்ள எண்கள் இந்தப் பக்கம் திறக்கும்போதே உண்மையாகக் கணக்கிடப்படுகின்றன. விதிகளை எழுதும்போது பார்த்த வாக்கியங்கள் (dev) தனியாகவும், பார்க்காத புதிய வாக்கியங்கள் (held-out) தனியாகவும் உள்ளன.</p>
+    <div class="scorebar" id="scorebar"></div>
+
+    <div class="two">
+      <div class="panel">
+        <h3 data-i18n="e.ab.h">ஒவ்வொரு அடுக்கும் எவ்வளவு உதவுகிறது?</h3>
+        <p class="hint" data-i18n="e.ab.d">Ablation: அடுக்குகளை ஒவ்வொன்றாக நீக்கி, held-out துல்லியம் எப்படி மாறுகிறது.</p>
+        <div class="tbl-scroll"><table class="tbl abl" id="ablation"></table></div>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="e.cm.h">“படி” குழப்ப அணி</h3>
+        <p class="hint" data-i18n="e.cm.d">வரிசை = சரியான பொருள், நெடுவரிசை = கணினியின் கணிப்பு. மூலைவிட்டத்தில் இருந்தால் சரி.</p>
+        <div class="tbl-scroll"><table class="cm" id="confusion"></table></div>
+      </div>
+    </div>
+
+    <details class="cases panel" style="margin-top:18px">
+      <summary data-i18n="e.cases">எல்லா சோதனை வாக்கியங்களையும் காட்டு</summary>
+      <div class="tbl-scroll"><table class="tbl" id="caseTable" style="margin-top:12px"></table></div>
+    </details>
+  </section>
+
+  <section class="block" id="dictionary" aria-labelledby="dh">
+    <h2 id="dh" data-i18n="d.h">அகராதி</h2>
+    <p class="sec-lede" data-i18n="d.lede">கணினிக்குத் தெரிந்த பலபொருள் சொற்கள். எடுத்துக்காட்டு வாக்கியத்தைத் தொட்டால் மேலே பகுப்பாய்வு செய்யும்.</p>
+    <div class="dict-tools"><input class="search" id="dictSearch" type="search" lang="ta" data-i18n-ph="d.search" placeholder="சொல் அல்லது பொருளைத் தேடுங்கள்"></div>
+    <div class="dict" id="dict"></div>
+
+    <div class="panel add">
+      <h3 data-i18n="d.add.h">புதிய சொல்லைச் சேர்</h3>
+      <p class="hint" data-i18n="d.add.d">ஒரு வரிக்கு ஒரு பொருள்: பொருளின் பெயர், முக்கால்புள்ளி (:), பிறகு காற்புள்ளியால் பிரித்த சூழல் சொற்கள். குறைந்தது இரண்டு பொருள்கள் வேண்டும். இந்த உலாவியில் மட்டும் சேமிக்கப்படும்.</p>
+      <form id="addForm">
+        <label for="cwWord" data-i18n="d.add.word">சொல்</label>
+        <input id="cwWord" type="text" lang="ta" autocomplete="off" placeholder="வலை">
+        <label for="cwSenses" data-i18n="d.add.senses">பொருள்களும் சூழல் சொற்களும்</label>
+        <textarea id="cwSenses" lang="ta" spellcheck="false" placeholder="மீன்பிடி வலை : மீன், மீனவர், கடல், படகு&#10;இணையம் : தளம், கணினி, தேடு"></textarea>
+        <div class="foot-actions"><button class="btn" type="submit" data-i18n="d.add.btn">சொல்லைச் சேர்</button><p class="msg" id="addMsg" role="status"></p></div>
+      </form>
+      <div class="mine" id="mine"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span data-i18n="foot.a">பொருள் தேடல்: விளக்கமளிக்கக்கூடிய தமிழ்ச் சொற்பொருள் தேர்வு</span>
+    <span data-i18n="foot.b">சிக்கல் P12, ஒரே சொல்லுக்குப் பல பொருள்கள்</span>
+  </div>
+</footer>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const BUILTIN = [
+{ w:'படி', find:/படி/, senses:[
+ { n:'படித்தல்', d:'நூல், பாடம் போன்றவற்றை வாசித்தல் அல்லது கற்றல்', ex:'மாணவர்கள் தேர்வுக்காகப் பாடங்களை நன்றாகப் படித்தனர்.', prior:.6,
+   forms:[[/^(படிக்|படித்|படிப்|படியுங்)/,.8]],
+   cues:['புத்தக','நூல்','நூலக','பள்ளி','கல்லூரி','தேர்வு','பாட','மாணவ','ஆசிரிய','கடித','செய்தி','வகுப்பு','கவிதை','கதை','நாளிதழ்','எழுத்து','பரீட்சை','பட்டம்'] },
+ { n:'படிக்கட்டு', d:'மேலே ஏறவும் கீழே இறங்கவும் உதவும் படி', ex:'சிறுவன் படிக்கட்டுகள் வழியாக மெதுவாக மேலே சென்றான்.', prior:.35,
+   forms:[[/(மாடி|படிக்கட்|படிகள்|படிகளில்|படிகளை|படித்துறை)/,4]],
+   cues:['மாடி','ஏறு','ஏறி','இறங்','இறக்','கோயில்','மேலே','கீழே','தடுக்','தவறி','விழுந்','ஏணி','கட்டட','உட்கார்ந்து','உட்கார்ந்த','அமர்ந்த'] },
+ { n:'அளவு (படி)', d:'தானியம், பால் போன்றவற்றை அளக்கும் அளவு', ex:'அம்மா இரண்டு படி நெல்லை அளந்து பையில் வைத்தார்.', prior:.3,
+   forms:[], cues:['அரிசி','நெல்','கோதுமை','பருப்பு','எண்ணெய்','பால்','அளந்','அளவு','அளக்','பாத்திர','மளிகை','தானிய'] },
+ { n:'நகல் / பிரதி', d:'ஒரு ஆவணத்தின் நகல்', ex:'சான்றிதழின் ஒரு படி எடுத்து அலுவலகத்தில் கொடுத்தேன்.', prior:.2,
+   forms:[], cues:['நகல்','பிரதி','ஆவண','ஜெராக்ஸ்','அச்சிட','கோப்பு','சான்றிதழ்','சான்றிதழின்','எடு','எடுத்த','ஒரு படி'] },
+ { n:'படிதல்', d:'தூசி, சேறு போன்றவை அடியில் தங்குதல்', ex:'நீண்ட நாள் வைத்ததால் பாத்திரத்தின் அடியில் கசடு படிந்திருந்தது.', prior:.2,
+   forms:[[/^படிந்/,4]], cues:['தூசி','தூசு','மண்','கசடு','சேறு','துரு','கறை','அடிய','பனி','மேற்பரப்'] },
+ { n:'அதன்படி / ஏற்ப', d:'ஒன்றுக்கு ஏற்றவாறு, அதன்படி', ex:'அவர் சொன்னபடி நாங்கள் நடந்துகொண்டோம்.', prior:.2,
+   forms:[[/^(?!.*மாடி).{2,}(ன்னபடி|ியபடி|ந்தபடி|ின்படி|ிப்படி|ப்படி|ுபடி)$/,3.5]],
+   cues:['சொல்','உத்தரவு','உத்தர','சட்ட','விதி','வழக்க','திட்ட','கட்டளை','ஆணை','விருப்ப'] },
+ { n:'இப்படி / அப்படி / எப்படி', d:'விதம், முறை என்பதைக் குறிக்கும் சொல்', ex:'நீங்கள் இப்படிச் செய்தால் வேலை சீக்கிரம் முடியும்.', prior:.1,
+   forms:[[/^(இ|அ|எ)ப்படி/,6]], cues:[] },
+ { n:'கொடுப்பனவு', d:'சம்பளத்துடன் கூடுதலாகத் தரும் தொகை', ex:'அரசு ஊழியர்களுக்கு அகவிலைப்படி உயர்த்தப்பட்டது.', prior:.1,
+   forms:[[/(பயணப்படி|அகவிலைப்படி|தினப்படி|பஞ்சப்படி)/,6]], cues:['சம்பள','ஊதிய','ஊழியர்','அரசு','உயர்வு','அலுவலக','பயண'] },
+ { n:'படிவம்', d:'நிரப்பிக் கொடுக்கும் விண்ணப்பப் படிவம்', ex:'விண்ணப்பப் படிவத்தை நிரப்பிக் கையொப்பமிட்டார்.', prior:.1,
+   forms:[[/படிவ/,6]], cues:['விண்ணப்ப','நிரப்','கையொப்ப','பூர்த்தி'] },
+ { n:'படிப்படியாக', d:'சிறிது சிறிதாக, ஒன்றன் பின் ஒன்றாக', ex:'நோயாளி படிப்படியாகக் குணமடைந்தார்.', prior:.1,
+   forms:[[/படிப்படி/,7]], cues:[] }
+]},
+{ w:'ஆறு', find:/^(ஆறு|ஆறி|ஆற்(?!றல்)|ஆறா)/, senses:[
+ { n:'நதி', d:'நீர் ஓடும் பெரிய நீரோட்டம்', ex:'ஆற்றங்கரையில் மீனவர்கள் வலை வீசினர்.', prior:.5,
+   forms:[[/^ஆற்/,3]],
+   cues:['நீர்','தண்ணீர்','படகு','கரை','நீந்','மீன்','வெள்ள','மணல்','பாலம்','குளி','காவிரி','வைகை','கங்கை','நதி','பாய்','அணை','மிதந்','கடல்'] },
+ { n:'எண் 6', d:'ஐந்துக்கு அடுத்த எண்', ex:'ஆறு என்ற எண்ணுக்குப் பிறகு ஏழு வருகிறது.', prior:.4,
+   forms:[[/^ஆறாவ/,3]],
+   cues:['மணி','நாள்','மாத','வயது','ஆண்டு','வருட','பேர்','ரூபாய்','ஐந்து','ஏழு','கிலோ','வகுப்பு','பேருந்து','முட்டை','பழ'] },
+ { n:'ஆறுதல் / சூடு தணிதல்', d:'சூடு குறைதல், வலி அல்லது துயரம் தணிதல்', ex:'சூடான காபி சிறிது நேரத்தில் ஆறியது.', prior:.3,
+   forms:[[/^(ஆறி|ஆறுதல்|ஆறாத|ஆறட்)/,3]],
+   cues:['சூடு','சூடான','தேநீர்','காபி','உணவு','சாப்பாடு','சோறு','பால்','காயம்','புண்','வலி','துயர','கவலை','சோகம்','கோபம்'] }
+]},
+{ w:'மாலை', find:/^மாலை/, senses:[
+ { n:'மாலைப்பொழுது', d:'பகலுக்கும் இரவுக்கும் இடைப்பட்ட நேரம்', ex:'மாலையில் சூரியன் மறையும் வேளையில் கடற்கரைக்குச் சென்றோம்.', prior:.5,
+   forms:[[/^(மாலையில்|மாலைப்)/,2.5]],
+   cues:['சூரியன்','சூரிய','மறை','இருள்','நேரம்','காலை','இரவு','திரும்ப','விளக்கு','நடை','தேநீர்','பள்ளி','வான','செவ்வான','பறவை'] },
+ { n:'பூமாலை', d:'பூக்களால் கட்டிய மாலை, கழுத்தில் அணியும் மாலை', ex:'விழாவில் தெய்வச் சிலைக்கு மல்லிகை மாலையை அணிவித்தனர்.', prior:.4,
+   forms:[[/^(மாலையை|மாலைகள்|மாலையிட|மாலையும்)/,2]],
+   cues:['பூ','கழுத்து','அணிவி','கோயில்','சாமி','சுவாமி','தெய்வ','மணமக்கள்','மணமகன்','மணமகள்','திருமண','கட்டி','மல்லிகை','ரோஜா','சூட்','வரவேற்','சிலை','தலைவர்','மரியாதை'] }
+]},
+{ w:'கால்', find:/^(கால்(?!வாய்)|காலை|காலில்|காலின்|காலுக்|காலால்|காலடி|காலுடன்)/, senses:[
+ { n:'கால் (உடல் உறுப்பு)', d:'நடக்க உதவும் உடல் உறுப்பு', ex:'அவனுடைய காலில் வலி ஏற்பட்டதால் மருத்துவரிடம் சென்றான்.', prior:.4,
+   forms:[[/^(கால்கள|காலில்|காலுக்|காலால்|காலடி|காலின்|கால்$)/,.6]],
+   cues:['வலி','வீங்','நடக்','நடந்','முறிந்','முறிவு','செருப்பு','தடுக்','கட்டு','மிதி','உதை','முட்டி','விரல்','எலும்பு','மருத்துவ','சுளுக்கு','தவறி','நீட்ட','மடக்','நொண்டி','ஊன்ற','பாதம்','கை'] },
+ { n:'காலைப்பொழுது', d:'சூரியன் உதிக்கும் நேரம்', ex:'விடியற்காலையில் எழுந்து காலை உணவைச் சாப்பிட்டான்.', prior:.35,
+   forms:[[/^(காலையில்|காலைப்)/,2.5],[/^காலை$/,.8]],
+   cues:['எழுந்','சூரியன்','சூரிய','உதய','சிற்றுண்டி','இட்லி','தோசை','பால்காரர்','பத்திரிகை','மணி','நடைப்பயிற்சி','விடிய','பறவை','பனி','சேவல்','உணவு','பள்ளிக்','அலுவலக','நேரம்'] },
+ { n:'கால் (நான்கில் ஒரு பங்கு)', d:'¼ அளவு', ex:'கால் பங்கு இனிப்பைத் தனியாக எடுத்து வை.', prior:.2,
+   forms:[[/^கால்$/,.8]],
+   cues:['கிலோ','லிட்டர்','மீட்டர்','ரூபாய்','அரை','முக்கால்','பங்கு','பாதி','அளவு','பழ','பணம்','கிராம்'] }
+]},
+{ w:'அடி', find:/^அடி(?!மை)/, senses:[
+ { n:'அடித்தல்', d:'கையால் அல்லது கருவியால் தாக்குதல்', ex:'கோபத்தில் அவன் கையால் மேசையில் அடித்தான்.', prior:.5,
+   forms:[[/^(அடித்|அடிக்(?!கடி)|அடிபட்)/,.8]],
+   cues:['கை','தடி','குச்சி','ஆசிரிய','அம்மா','அப்பா','கோபம்','கோபத்தில்','வலி','பந்து','மட்டை','சண்டை','திட்ட','பிரம்பு','குழந்தை','தண்டனை','காயம்','அழுத','வாங்க'] },
+ { n:'கீழ்ப்பகுதி', d:'ஒன்றின் அடிப்பாகம், கீழ் இடம்', ex:'மரத்தின் அடியில் அமர்ந்து ஓய்வெடுத்தோம்.', prior:.3,
+   forms:[[/^(அடியில்|அடிப்பாகம்|அடியிலே)/,3]],
+   cues:['மர','மேசை','கட்டில்','மலை','கிணறு','கடல்','பாறை','புதை','மறைத்','கீழே','பெட்டி','நிழல்'] },
+ { n:'அடிப்படை', d:'ஒன்றுக்கு ஆதாரமாக இருப்பது', ex:'கல்வி ஒவ்வொருவரின் அடிப்படை உரிமை.', prior:.1,
+   forms:[[/^(அடிப்படை|அடிமட்ட)/,4]], cues:['கொள்கை','உரிமை','வசதி','கல்வி','தேவை','ஆதார'] },
+ { n:'அடி (நீள அளவு)', d:'நீளத்தை அளக்கும் அடி (feet)', ex:'இந்தச் சுவர் பத்து அடி உயரம் உள்ளது.', prior:.2,
+   forms:[[/^அடி$/,.6]],
+   cues:['உயர','நீள','அகல','ஆழ','சதுர','மனை','இடம்','தூரம்','அளந்','அளவு','கட்டட','சுவர்'] },
+ { n:'வீசுதல் / ஒலித்தல்', d:'வெயில், காற்று வீசுதல், மணி ஒலித்தல்', ex:'வெயில் கடுமையாக அடிக்கிறது.', prior:.2,
+   forms:[], cues:['வெயில்','காற்று','மணி','கடிகாரம்','அலை','ஒலி','முரசு','பறை','விசில்','வாசனை','துர்நாற்றம்','புயல்','மின்னல்','வெளிச்சம்','குளிர்'] },
+ { n:'அடிக்கடி', d:'பலமுறை, அடுத்தடுத்து', ex:'அவன் அடிக்கடி ஊருக்குப் போவான்.', prior:.1,
+   forms:[[/^அடிக்கடி/,7]], cues:[] }
+]},
+{ w:'தலை', find:/^தலை/, senses:[
+ { n:'தலை (உடல் உறுப்பு)', d:'உடலின் மேல் உறுப்பு', ex:'அவனுக்குத் தலை வலிப்பதால் ஓய்வெடுத்தான்.', prior:.5,
+   forms:[[/^(தலையில்|தலைக்கு|தலையை|தலை$|தலைகள|தலைமுடி)/,1]],
+   cues:['வலி','முடி','சீவ','குளி','தொப்பி','மயக்க','சுற்ற','தலையணை','வணங்','முட்டி','கழுத்து','கண்','காது','மொட்டை','எண்ணெய்','ஹெல்மெட்','குனிந்','சுமை'] },
+ { n:'தலைமை', d:'முதன்மை, பொறுப்பில் இருப்பவர்', ex:'கட்சியின் தலைவர் கூட்டத்தில் உரையாற்றினார்.', prior:.2,
+   forms:[[/^(தலைவர்|தலைவி|தலைமை|தலையாய|தலைநகர்)/,4]],
+   cues:['கட்சி','குழு','அமைப்பு','சங்க','அரசு','நிறுவன','பள்ளி','கூட்டம்','அமைச்சர்','பொறுப்பு','தேர்ந்தெடு'] },
+ { n:'தலைப்பு', d:'ஒரு கட்டுரை அல்லது நூலின் பெயர்', ex:'கட்டுரையின் தலைப்பு மிகவும் பொருத்தமாக இருந்தது.', prior:.1,
+   forms:[[/^(தலைப்பு|தலைப்பில்|தலைப்பை)/,5]], cues:['கட்டுரை','கதை','புத்தக','பாடம்','செய்தி','விவாத','பேச்சு','பெயர்'] },
+ { n:'தலைமுறை', d:'ஒரு வழிவந்தவர்களின் வரிசை', ex:'இந்தக் கலை பல தலைமுறைகளாகத் தொடர்கிறது.', prior:.1,
+   forms:[[/^தலைமுறை/,6]], cues:['பாட்டன்','பேரன்','குடும்ப','மரபு','கலை'] }
+]},
+{ w:'நாடு', find:/^(நாடு|நாடி|நாட்டி(?!ய)|நாட்டை|நாட்டின்|நாடா)/, senses:[
+ { n:'நாடு (தேசம்)', d:'அரசு ஆளும் பெரிய நிலப்பகுதி', ex:'நம் நாட்டின் தலைநகரம் புதுதில்லி.', prior:.6,
+   forms:[[/^(நாடு|நாட்டி|நாட்டை|நாட்டின்|நாடுகள)/,.8]],
+   cues:['அரசு','மக்கள்','வெளிநாடு','தலைநகர்','எல்லை','சுதந்திர','ஆட்சி','பிரதமர்','குடியரசு','உலக','இந்தியா','இலங்கை','பாரத','தேசிய','குடிமக்கள்','போர்','வளர்ச்சி','பொருளாதார'] },
+ { n:'நாடுதல்', d:'உதவிக்காக ஒருவரை அணுகுதல், விரும்புதல்', ex:'அவர் உதவிக்காக வழக்கறிஞரை நாடினார்.', prior:.3,
+   forms:[[/^(நாடின|நாடிய|நாடிச்|நாடுவ|நாடாத)/,2]],
+   cues:['உதவி','தீர்வு','வழக்கறிஞர்','நீதி','நீதிமன்ற','அணுக','ஆலோசனை','நம்பிக்கை','அடைக்கலம்','வேண்டி','பரிகாரம்','மருத்துவ'] },
+ { n:'நாடித்துடிப்பு', d:'மணிக்கட்டில் உணரும் இதயத் துடிப்பு', ex:'மருத்துவர் நோயாளியின் கையைப் பிடித்து நாடி பார்த்தார்.', prior:.2,
+   forms:[[/^நாடித்/,4]], cues:['மருத்துவ','கை','துடிப்பு','நோயாளி','இதய','பார்த்து','பரிசோதி'] }
+]},
+{ w:'திங்கள்', find:/^திங்க/, senses:[
+ { n:'திங்கட்கிழமை', d:'வாரத்தின் இரண்டாம் நாள்', ex:'திங்கட்கிழமை பள்ளி விடுமுறை.', prior:.4,
+   forms:[[/^(திங்கட்|திங்களன்று|திங்கள்கிழமை)/,4],[/^திங்கள்$/,.5]],
+   cues:['கிழமை','செவ்வாய்','ஞாயிறு','வெள்ளி','சனி','புதன்','வியாழன்','வார','விடுமுறை','பள்ளி','அலுவலக','வேலை','வகுப்பு'] },
+ { n:'நிலவு (சந்திரன்)', d:'இரவு வானில் தெரியும் நிலா', ex:'வானில் முழுத் திங்கள் ஒளிவீசியது.', prior:.3,
+   forms:[], cues:['வான','ஒளி','நிலா','முழு','இரவு','நட்சத்திர','குளிர்ச்சி','வெண்','பிறை','அழகு','சந்திர'] },
+ { n:'மாதம்', d:'ஒரு மாதக் காலம்', ex:'குழந்தை பிறந்து பத்துத் திங்கள் ஆகிவிட்டது.', prior:.3,
+   forms:[], cues:['பத்து','ஐந்து','மூன்று','ஆறு','ஏழு','ஒன்பது','கரு','கர்ப்ப','பிறந்','வயது','ஆண்டு','மாதம்'] }
+]},
+{ w:'அணி', find:/^அணி(?!ல்)/, senses:[
+ { n:'குழு (அணி)', d:'விளையாட்டு அல்லது பணிக்கான குழு', ex:'நம் அணி கிரிக்கெட் போட்டியில் வெற்றி பெற்றது.', prior:.5,
+   forms:[[/^(அணிகள|அணியில்|அணியின்|அணிக்கு|அணியை)/,2]],
+   cues:['விளையாட்டு','போட்டி','கிரிக்கெட்','கால்பந்து','வெற்றி','கேப்டன்','ஆட்ட','வீரர்','கோப்பை','தோல்வி','பந்து','வீராங்கனை'] },
+ { n:'அணிதல் / அணிகலன்', d:'ஆடை, நகை போன்றவற்றை உடலில் அணிதல்', ex:'அவள் தங்க நகைகளை அணிந்து திருமணத்துக்குச் சென்றாள்.', prior:.4,
+   forms:[[/^(அணிந்|அணிகல|அணியு|அணிவி)/,3]],
+   cues:['நகை','ஆடை','சட்டை','கழுத்து','தங்க','முத்து','காதணி','பட்டு','புடவை','சேலை','மோதிரம்','மாலை','வளையல்','அலங்கார','நெற்றி','உடை','கவசம்'] },
+ { n:'அணி (இலக்கண அணி)', d:'செய்யுளுக்கு அழகு சேர்க்கும் உவமை போன்ற அணி', ex:'இந்தக் கவிதையில் உவமை அணி அழகாக வந்துள்ளது.', prior:.1,
+   forms:[[/^அணியிலக்/,5]], cues:['கவிதை','இலக்கண','உவமை','உருவகம்','செய்யுள்','புலவர்','அலங்காரம்'] },
+ { n:'அணிவகுப்பு', d:'வரிசையாக நடக்கும் அணிநடை', ex:'குடியரசு நாளில் வீரர்கள் அணிவகுத்துச் சென்றனர்.', prior:.1,
+   forms:[[/^அணிவக/,5]], cues:['படை','ஊர்வலம்','வரிசை','மாணவர்கள்','சீருடை','குடியரசு','ராணுவ','காவல்'] }
+]},
+{ w:'பாடு', find:/^(பாடு|பாடி|பாட்டு|பாடின|பாடிய|பாடல்|பாடகர்|பாட்டை)/, senses:[
+ { n:'பாடுதல் (இசைத்தல்)', d:'குரலால் இசையுடன் பாடுதல்', ex:'குயில் இனிமையாகப் பாடியது.', prior:.6,
+   forms:[[/^(பாடி|பாட்டு|பாடின|பாடிய|பாடல்|பாடகர்|பாட்டை)/,2]],
+   cues:['குரல்','இசை','மேடை','குயில்','இனிமை','கச்சேரி','ராகம்','தாலாட்டு','பாடகி','கேட்','திரைப்பட','வரிகள்','கீர்த்தனை'] },
+ { n:'பாடு (உழைப்பு / துன்பம்)', d:'கடுமையான உழைப்பு, துன்பம்', ex:'விவசாயி குடும்பத்துக்காகப் பாடுபட்டு உழைத்தான்.', prior:.3,
+   forms:[[/^(பாடுபட்|பாடுபடு|பாடுகள)/,4]],
+   cues:['உழை','பசி','குடும்ப','ஏழ்மை','கஷ்ட','வறுமை','துன்ப','விவசாயி','வியர்வை','வாழ்க்கை','சிரம','பிள்ளை'] }
+]},
+{ w:'ஏறு', find:/^(ஏறு|ஏறி|ஏறின|ஏறிய|ஏறா|ஏற்றம்)/, senses:[
+ { n:'ஏறுதல்', d:'மலை, வண்டி போன்றவற்றின் மேல் ஏறுதல்', ex:'சிறுவர்கள் மரத்தில் ஏறி மாங்காய் பறித்தனர்.', prior:.5,
+   forms:[], cues:['மலை','மரம்','மரத்தில்','படிக்கட்','மாடி','பேருந்து','வண்டி','ரயில்','குதிரை','ஏணி','கோபுரம்','சிகரம்','ஆட்டோ','விமான','மிதிவண்டி','யானை','கப்பல்','தென்னை'] },
+ { n:'உயர்தல்', d:'விலை, வெப்பம் போன்றவை அதிகரித்தல்', ex:'தங்கத்தின் விலை நேற்று மேலும் ஏறியது.', prior:.4,
+   forms:[[/^ஏற்றம்/,2]],
+   cues:['விலை','வெப்ப','காய்ச்சல்','விலைவாசி','பங்குச்சந்தை','தங்கம்','தங்கத்தின்','சர்க்கரை','போதை','இரத்த','அழுத்த','மதிப்பு','கடன்','வட்டி','பெட்ரோல்','காய்கறி'] },
+ { n:'ஏறு (காளை)', d:'காளை மாடு', ex:'ஜல்லிக்கட்டில் வீரர்கள் ஏறு தழுவினர்.', prior:.2,
+   forms:[[/^(ஏறுதழுவ|ஏறுகள)/,5]],
+   cues:['ஜல்லிக்கட்டு','காளை','மாடு','அடக்க','வாடிவாசல்','பொங்கல்','தழுவ','வீரர்','மஞ்சுவிரட்டு'] }
+]},
+{ w:'ஓடு', find:/^(ஓடு|ஓடி|ஓடின|ஓடா|ஓட்டு|ஓட்டி|ஓட்டை|ஓட்டம்|ஓடை)/, senses:[
+ { n:'ஓடுதல்', d:'வேகமாகக் கால்களால் ஓடுதல்', ex:'சிறுவன் நாயைக் கண்டு பயந்து ஓடினான்.', prior:.5,
+   forms:[[/^(ஓடின|ஓடிய|ஓட்டம்|ஓடிப்)/,.8]],
+   cues:['வேகமாக','பந்தய','மைதான','குழந்தை','நாய்','குதிரை','தெரு','துரத்','வீரர்','பயந்து','பிடிக்க','மான்','முயல்','தப்பி','திருடன்','போலீஸ்'] },
+ { n:'ஓடு (கூரை / ஓடு)', d:'வீட்டுக் கூரை ஓடு, ஆமை ஓடு போன்ற கடினமான மூடி', ex:'பழைய வீட்டின் கூரை ஓடுகளில் மழைத்துளிகள் விழுந்தன.', prior:.3,
+   forms:[[/^(ஓடுகள|ஓட்டுக்)/,2.5]],
+   cues:['வீடு','வீட்','கூரை','மழை','சுவர்','ஆமை','முட்டை','நத்தை','கூடு','சுட்ட','மண்','உடைந்','சட்டி','தேங்காய்','சிரட்டை'] },
+ { n:'பாய்தல் / இயங்குதல்', d:'நீர் பாய்தல், இயந்திரம் இயங்குதல், படம் ஓடுதல்', ex:'வயலுக்கு வாய்க்காலில் தண்ணீர் ஓடியது.', prior:.4,
+   forms:[[/^ஓடை/,3]],
+   cues:['தண்ணீர்','நீர்','ஆறு','ரயில்','இயந்திர','படம்','திரையரங்க','கடை','நாட்கள்','கடிகாரம்','இன்ஜின்','மோட்டார்','குழாய்','வாய்க்கால்','கால்வாய்','தொடர்','தொலைக்காட்சி','வியாபார','ஓடை'] },
+ { n:'ஓட்டுதல்', d:'வண்டி, வாகனம் போன்றவற்றை ஓட்டுதல்', ex:'அவர் லாரியை வேகமாக ஓட்டிச் சென்றார்.', prior:.4,
+   forms:[[/^(ஓட்டி|ஓட்டு(?!ப்|ச்|ரிமை|க்))/,.8]],
+   cues:['வண்டி','வாகன','ஓட்டுநர்','பேருந்து','சைக்கிள்','லாரி','மிதிவண்டி','கார்','பைக்','உரிமம்','டிராக்டர்','சாலை','ஆடு','மாடு'] },
+ { n:'வாக்கு (ஓட்டு)', d:'தேர்தலில் அளிக்கும் வாக்கு', ex:'தேர்தல் நாளில் மக்கள் ஓட்டுச் சாவடிக்குச் சென்று வாக்களித்தனர்.', prior:.3,
+   forms:[[/^(ஓட்டுப்|ஓட்டுச்|ஓட்டுரிமை)/,3.5]],
+   cues:['தேர்தல்','வாக்கு','வாக்காளர்','கட்சி','வேட்பாளர்','சாவடி','முடிவு','ஜனநாயக','சின்னம்','அரசியல்'] },
+ { n:'ஓட்டை (துளை)', d:'ஒரு பொருளில் உள்ள துளை', ex:'பழைய குடையில் பெரிய ஓட்டை விழுந்திருந்தது.', prior:.1,
+   forms:[[/^ஓட்டை/,5]], cues:['பை','பாத்திர','குடை','பழைய','கசிவு','சட்டை','காலுறை','கசி'] }
+]},
+{ w:'எண்', find:/^(எண்$|எண்ணி|எண்ணு|எண்ணம்|எண்கள|எண்ணங்|எண்ணை(?!ய்))/, senses:[
+ { n:'எண் (இலக்கம்)', d:'கணக்கிடப் பயன்படும் இலக்கம்', ex:'உங்கள் தொலைபேசி எண்ணைச் சொல்லுங்கள்.', prior:.4,
+   forms:[[/^(எண்$|எண்கள|எண்ணிக்|எண்ணை)/,1.2]],
+   cues:['தொலைபேசி','போன்','வீட்டு','கதவு','வரிசை','பதிவு','அட்டை','அழை','ஆதார்','மொபைல்','கணித','இலக்க','பூஜ்ஜிய','சீட்டு'] },
+ { n:'எண்ணுதல் (கணக்கிடுதல்)', d:'ஒவ்வொன்றாக எண்ணிக் கணக்கிடுதல்', ex:'கடைக்காரர் பணத்தை எண்ணிப் பெட்டியில் வைத்தார்.', prior:.3,
+   forms:[[/^(எண்ணு|எண்ணின)/,1]],
+   cues:['ரூபாய்','பணம்','பணத்தை','நோட்டு','விரல்','நட்சத்திர','ஒன்று','இரண்டு','கணக்கிட','நாட்கள்'] },
+ { n:'எண்ணம் (சிந்தனை)', d:'மனதில் தோன்றும் நினைப்பு', ex:'அவளுடைய நல்ல எண்ணங்களே அவளை உயர்த்தின.', prior:.3,
+   forms:[[/^(எண்ணம்|எண்ணங்)/,2.5]],
+   cues:['மனதில்','மன','நினைத்','கவலை','கனவு','திட்ட','வருந்தி','நல்ல','தூய','சிந்த','இதயம்','நம்பிக்கை','கருத்து'] }
+]},
+{ w:'தாள்', find:/^(தாள்$|தாள்கள|தாளில்|தாளின்|தாளை|தாளுக்|தாளடி|தாளிணை)/, senses:[
+ { n:'காகிதம்', d:'எழுத அல்லது அச்சிடப் பயன்படும் தாள்', ex:'அவன் தாளில் ஓவியம் வரைந்தான்.', prior:.5,
+   forms:[[/^(தாளில்|தாள்கள|தாளை)/,.5]],
+   cues:['எழுது','வினா','விடை','தேர்வு','அச்சு','பேனா','மை','ஓவிய','நோட்டு','கிழி','மடி','வெள்ளை','கையொப்ப','கோப்பு','குப்பை'] },
+ { n:'தாள் (பாதம்)', d:'திருவடி, பாதம்', ex:'அடியார்கள் இறைவனின் தாளை வணங்கினர்.', prior:.2,
+   forms:[[/^(தாளடி|தாளிணை)/,5]],
+   cues:['இறை','வணங்','திரு','கடவுள்','தொழு','பணிந்','வள்ளுவர்','பாதம்','குறள்','சரண்','ஆண்டவன்','முருகன்','சிவன்','பெருமாள்'] },
+ { n:'தாள் (பயிர்த்தண்டு)', d:'நெல், கரும்பு போன்றவற்றின் தண்டு', ex:'அறுவடைக்குப் பின் வயலில் நெல் தாள்களைக் குவித்தனர்.', prior:.2,
+   forms:[], cues:['வயல்','நெல்','அறுவடை','வைக்கோல்','பயிர்','உழவர்','கதிர்','விவசாய','தினை','கரும்பு','சோளம்'] }
+]},
+{ w:'நூல்', find:/^(நூல்$|நூல்கள|நூலை|நூலில்|நூலின்|நூலுக்|நூலாசிரியர்)/, senses:[
+ { n:'நூல் (புத்தகம்)', d:'படிப்பதற்கான புத்தகம் அல்லது இலக்கண நூல்', ex:'இந்த நூலை எழுதிய ஆசிரியருக்கு விருது கிடைத்தது.', prior:.5,
+   forms:[[/^(நூல்கள|நூலாசிரியர்)/,1.5]],
+   cues:['எழுத்தாளர்','ஆசிரிய','வெளியீடு','படித்','படிக்','அச்சிட','அட்டை','பக்க','நூலக','இலக்கிய','புலவர்','வெளியிட்','திருக்குறள்','தொல்காப்பிய','புத்தக','பதிப்பக','விமர்சன','கவிஞர்','விருது'] },
+ { n:'நூல் (இழை)', d:'துணி தைக்க, பின்ன உதவும் இழை', ex:'அவள் ஊசியில் நூலைக் கோர்த்தாள்.', prior:.4,
+   forms:[], cues:['ஊசி','ஊசியில்','தையல்','துணி','பட்டம்','கயிறு','சுற்றி','பின்ன','நெசவு','கோர்த்','பருத்தி','சிக்க','நெய்','ஆடை','கொக்கி','தறி'] }
+]}
+];
+const MORPH_RULES = [
+  { id:'M1', re:/^படி(த்த|த்தே|த்தா|க்கிற|க்க|ப்ப|ப்பு|யுங்|க்கும்|த்து)/, root:'படி', sense:'படித்தல்', label:'வினை விகுதி', explanation:'வினை விகுதி (-த்தான், -க்கிறாள், -ப்பாள், -ப்பு) → வாசித்தல் / கற்றல்', weight:3, block:/^(படிப்படி|படிக்கட்ட)/ },
+  { id:'M2', re:/^(.*ப்)?படி(யில்|யின்|யை|யிலிருந்து|கள்|களில்|களின்|களை|க்கட்ட)|^மாடிப்படி/, root:'படி', sense:'படிக்கட்டு', label:'பெயர்ச்சொல் + வேற்றுமை / பன்மை', explanation:'வேற்றுமை உருபு அல்லது பன்மை (-யில், -களில்) → இடம் / படிக்கட்டு', weight:3 },
+  { id:'M3', re:/^.{2,}(ப்படி|ன்னபடி|யபடி|ந்தபடி|ின்படி|ுப்படி)$/, root:'படி', sense:'அதன்படி / ஏற்ப', label:'-படி இணைவு', explanation:'பெயர்/வினையெச்சத்துடன் இணைந்த -படி → “according to”', weight:3, block:/^(இ|அ|எ)ப்படி|மாடி|படிப்படி|பயணப்படி|அகவிலைப்படி|தினப்படி|பஞ்சப்படி/ },
+  { id:'M4', re:/^படிந்/, root:'படி', sense:'படிதல்', label:'படிந்த- வினை வடிவம்', explanation:'படிந்- வடிவம் → தூசி / கசடு தங்குதல்', weight:3 },
+  { id:'M5', re:/^படி$/, root:'படி', sense:'நகல் / பிரதி', label:'“படி எடு” சொற்றொடர்', explanation:'“ஒரு படி எடு” சூழலில் நகல் / பிரதி', weight:2, requiresContext:/^(எடு|எடுத்|நகல்|பிரதி)/ }
+];
+/* ---------- ஆங்கில விளக்கம் (English glosses for each sense) ---------- */
+const SENSE_EN = {
+ 'படித்தல்':'to read / study','படிக்கட்டு':'step / stair','அளவு (படி)':'a measure (unit of grain)','நகல் / பிரதி':'a copy','படிதல்':'to settle (dust, residue)','அதன்படி / ஏற்ப':'according to / as','இப்படி / அப்படி / எப்படி':'this way / that way / how','கொடுப்பனவு':'allowance (pay)','படிவம்':'form (application)','படிப்படியாக':'step by step, gradually',
+ 'நதி':'river','எண் 6':'the number six','ஆறுதல் / சூடு தணிதல்':'to cool down / heal',
+ 'மாலைப்பொழுது':'evening','பூமாலை':'garland',
+ 'கால் (உடல் உறுப்பு)':'leg / foot','காலைப்பொழுது':'morning','கால் (நான்கில் ஒரு பங்கு)':'a quarter (¼)',
+ 'அடித்தல்':'to hit','கீழ்ப்பகுதி':'bottom / underneath','அடிப்படை':'basis, fundamental','அடி (நீள அளவு)':'foot (length unit)','வீசுதல் / ஒலித்தல்':'to blow, shine or ring','அடிக்கடி':'often',
+ 'தலை (உடல் உறுப்பு)':'head','தலைமை':'leadership','தலைப்பு':'title / heading','தலைமுறை':'generation',
+ 'நாடு (தேசம்)':'country','நாடுதல்':'to seek / approach','நாடித்துடிப்பு':'pulse',
+ 'திங்கட்கிழமை':'Monday','நிலவு (சந்திரன்)':'the moon','மாதம்':'month',
+ 'குழு (அணி)':'team','அணிதல் / அணிகலன்':'to wear / ornament','அணி (இலக்கண அணி)':'figure of speech','அணிவகுப்பு':'parade',
+ 'பாடுதல் (இசைத்தல்)':'to sing','பாடு (உழைப்பு / துன்பம்)':'toil / hardship',
+ 'ஏறுதல்':'to climb / board','உயர்தல்':'to rise (price, heat)','ஏறு (காளை)':'bull',
+ 'ஓடுதல்':'to run','ஓடு (கூரை / ஓடு)':'tile / shell','பாய்தல் / இயங்குதல்':'to flow / to run (machine, film)','ஓட்டுதல்':'to drive','வாக்கு (ஓட்டு)':'vote','ஓட்டை (துளை)':'hole',
+ 'எண் (இலக்கம்)':'number','எண்ணுதல் (கணக்கிடுதல்)':'to count','எண்ணம் (சிந்தனை)':'thought',
+ 'காகிதம்':'paper','தாள் (பாதம்)':'feet (of a deity)','தாள் (பயிர்த்தண்டு)':'crop stalk',
+ 'நூல் (புத்தகம்)':'book','நூல் (இழை)':'thread'
+};
+
+/* ---------- எழுத்து உதவிகள் ---------- */
+const TAMIL_RE = /[஀-௿]/;
+function isCons(ch){ const c = ch.charCodeAt(0); return c >= 0x0B95 && c <= 0x0BB9; }
+function isSign(ch){ const c = ch.charCodeAt(0); return c >= 0x0BBE && c <= 0x0BCD; }
+function startsWithStem(tok, stem){
+  if (!stem || !tok.startsWith(stem)) return false;
+  const last = stem[stem.length - 1];
+  if (isCons(last) && tok.length > stem.length && isSign(tok[stem.length])) return false;
+  return true;
+}
+/* உகர ஈற்றுச் சொற்கள் (படகு → படகில்) */
+function startsWithStemU(tok, stem){
+  if (startsWithStem(tok, stem)) return true;
+  if (stem.endsWith('ு')) {
+    const a = stem.slice(0, -1);
+    if (tok.startsWith(a) && /[ிை]/.test(tok[a.length] || '')) return true;
+  }
+  return false;
+}
+function stemOf(w){ w = w.trim(); if (w.length > 3 && w.endsWith('ம்')) w = w.slice(0, -2); return w; }
+function entryMatches(entry, tok){
+  if (entry.find instanceof RegExp) return entry.find.test(tok);
+  return startsWithStem(tok, entry.stem);
+}
+function tokenize(text){
+  const parts = text.normalize('NFC').split(/([^஀-௿]+)/);
+  const tokens = [];
+  parts.forEach((p, i) => { if (p && TAMIL_RE.test(p)) tokens.push({ t: p, part: i }); });
+  return { parts, tokens };
+}
+function morphologyFor(token, tokens, tokenIndex){
+  return MORPH_RULES.filter(rule => {
+    if (!rule.re.test(token)) return false;
+    if (rule.block && rule.block.test(token)) return false;
+    if (rule.requiresContext) return tokens.some((t, i) => i !== tokenIndex && rule.requiresContext.test(t.t));
+    return true;
+  });
+}
+
+/* ---------- மதிப்பெண் ----------
+   score(s) = prior(s) + Σ form(s) + Σ morph(s) + Σ CUE_W / (1 + DECAY·(d−1))
+   opts: எந்த அடுக்குகளைப் பயன்படுத்த வேண்டும் (ablation) */
+const CUE_W = 2, DECAY = .12, MARGIN = .6;
+const ALL_LAYERS = { form:true, morph:true, context:true };
+function analyze(text, entries, opts){
+  opts = opts || ALL_LAYERS;
+  const { parts, tokens } = tokenize(text);
+  const results = [];
+  tokens.forEach((tk, i) => {
+    const entry = entries.find(e => entryMatches(e, tk.t));
+    if (!entry) return;
+    const morphMatches = morphologyFor(tk.t, tokens, i);
+    let total = 0;
+    const scored = entry.senses.map((s, si) => {
+      const prior = s.prior == null ? .3 : s.prior;
+      let score = prior;
+      const evidence = [];
+      if (opts.form) (s.forms || []).forEach(([re, w]) => {
+        if (re.test(tk.t)) { score += w; evidence.push({ kind:'form', text:tk.t, weight:w }); }
+      });
+      if (opts.morph) morphMatches.filter(r => r.sense === s.n).forEach(r => {
+        score += r.weight;
+        evidence.push({ kind:'morph', text:tk.t, weight:r.weight, ruleId:r.id, explanation:r.explanation, label:r.label });
+      });
+      if (opts.context) {
+        const used = new Set();
+        (s.cues || []).forEach(c => {
+          let best = null;
+          tokens.forEach((o, j) => {
+            if (j === i || used.has(j)) return;
+            if (startsWithStemU(o.t, c)) {
+              const d = Math.abs(i - j);
+              if (!best || d < best.d) best = { j, d, word:o.t };
+            }
+          });
+          if (best) {
+            used.add(best.j);
+            const w = CUE_W / (1 + DECAY * (best.d - 1));
+            score += w;
+            evidence.push({ kind:'cue', text:best.word, tokenIndex:best.j, d:best.d, weight:w, cue:c });
+          }
+        });
+      }
+      total += score;
+      return { sense:s, index:si, prior, score, evidence };
+    });
+    scored.forEach(x => { x.p = total > 0 ? x.score / total : 0; });
+    const order = scored.slice().sort((a, b) => b.score - a.score);
+    const best = order[0], second = order[1];
+    const gap = second ? best.score - second.score : best.score;
+    const supported = best.evidence.length > 0;
+    const level = !supported || gap < MARGIN ? 'low' : gap >= 2 ? 'high' : 'medium';
+    results.push({
+      idx:i, token:tk.t, entry, morphMatches,
+      root: morphMatches.length ? morphMatches[0].root : entry.w,
+      order, gap, level,
+      decision: level === 'low' ? null : best.sense.n
+    });
+  });
+  return { parts, tokens, results };
+}
+
+/* ---------- மதிப்பீட்டுத் தொகுப்பு ----------
+   dev: விதிகளை எழுதும்போது பார்த்தவை. held: விதிகள் பார்க்காதவை.
+   gold:null = சூழல் போதாததால் “உறுதியில்லை” என்பதே சரி */
+const EVAL_CASES = [
+ { set:'dev', s:'மாணவன் புத்தகம் படித்தான்.', t:'படித்தான்', g:'படித்தல்' },
+ { set:'dev', s:'அவன் படியில் அமர்ந்தான்.', t:'படியில்', g:'படிக்கட்டு' },
+ { set:'dev', s:'ஒரு படி அரிசி வாங்கு.', t:'படி', g:'அளவு (படி)' },
+ { set:'dev', s:'அவர் சொன்னபடி நடந்தார்.', t:'சொன்னபடி', g:'அதன்படி / ஏற்ப' },
+ { set:'dev', s:'பாத்திரத்தில் தூசி படிந்தது.', t:'படிந்தது', g:'படிதல்' },
+ { set:'dev', s:'சான்றிதழின் ஒரு படி எடு.', t:'படி', g:'நகல் / பிரதி' },
+ { set:'dev', s:'படிக்கட்டில் உட்கார்ந்து படித்தான்.', t:'படிக்கட்டில்', g:'படிக்கட்டு' },
+ { set:'dev', s:'படிக்கட்டில் உட்கார்ந்து படித்தான்.', t:'படித்தான்', g:'படித்தல்' },
+ { set:'held', s:'ஆசிரியர் கடிதத்தைப் படித்தார்.', t:'படித்தார்', g:'படித்தல்' },
+ { set:'held', s:'அவள் நாளிதழ் படிப்பாள்.', t:'படிப்பாள்', g:'படித்தல்' },
+ { set:'held', s:'நாங்கள் கல்லூரியில் படிக்கிறோம்.', t:'படிக்கிறோம்', g:'படித்தல்' },
+ { set:'held', s:'தேர்வுக்காக இரவு முழுவதும் படித்தேன்.', t:'படித்தேன்', g:'படித்தல்' },
+ { set:'held', s:'குழந்தை படிகளின் மேல் ஏறியது.', t:'படிகளின்', g:'படிக்கட்டு' },
+ { set:'held', s:'கோயில் படியில் தவறி விழுந்தான்.', t:'படியில்', g:'படிக்கட்டு' },
+ { set:'held', s:'மாடிப்படியில் ஏறும்போது கவனம்.', t:'மாடிப்படியில்', g:'படிக்கட்டு' },
+ { set:'held', s:'பாட்டி இரண்டு படி நெல் அளந்தார்.', t:'படி', g:'அளவு (படி)' },
+ { set:'held', s:'மேசையில் துரு படிந்திருந்தது.', t:'படிந்திருந்தது', g:'படிதல்' },
+ { set:'held', s:'அரசு உத்தரவுப்படி கடைகள் மூடப்பட்டன.', t:'உத்தரவுப்படி', g:'அதன்படி / ஏற்ப' },
+ { set:'held', s:'ஆவணத்தின் இரண்டு படி வேண்டும்.', t:'படி', g:'நகல் / பிரதி' },
+ { set:'held', s:'அரசு ஊழியர்களுக்கு அகவிலைப்படி உயர்ந்தது.', t:'அகவிலைப்படி', g:'கொடுப்பனவு' },
+ { set:'held', s:'நோயாளி படிப்படியாகக் குணமடைந்தார்.', t:'படிப்படியாகக்', g:'படிப்படியாக' },
+ { set:'held', s:'படி.', t:'படி', g:null },
+ { set:'held', s:'ஆற்றில் வெள்ளம் பெருக்கெடுத்தது.', t:'ஆற்றில்', g:'நதி' },
+ { set:'held', s:'என் தம்பிக்கு ஆறு வயது.', t:'ஆறு', g:'எண் 6' },
+ { set:'held', s:'கையில் இருந்த புண் ஆறியது.', t:'ஆறியது', g:'ஆறுதல் / சூடு தணிதல்' },
+ { set:'held', s:'மாலையில் நண்பர்களுடன் நடைப்பயிற்சி சென்றோம்.', t:'மாலையில்', g:'மாலைப்பொழுது' },
+ { set:'held', s:'மணமகனுக்கு ரோஜா மாலை அணிவித்தனர்.', t:'மாலை', g:'பூமாலை' },
+ { set:'held', s:'விளையாடும்போது அவனுக்குக் காலில் அடிபட்டது.', t:'காலில்', g:'கால் (உடல் உறுப்பு)' },
+ { set:'held', s:'அரை கிலோ வேண்டாம், கால் கிலோ போதும்.', t:'கால்', g:'கால் (நான்கில் ஒரு பங்கு)' },
+ { set:'held', s:'மரத்தின் அடியில் நிழல் இருந்தது.', t:'அடியில்', g:'கீழ்ப்பகுதி' },
+ { set:'held', s:'இன்று வெயில் கடுமையாக அடிக்கிறது.', t:'அடிக்கிறது', g:'வீசுதல் / ஒலித்தல்' },
+ { set:'held', s:'நம் அணி போட்டியில் வெற்றி பெற்றது.', t:'அணி', g:'குழு (அணி)' },
+ { set:'held', s:'தங்கத்தின் விலை மீண்டும் ஏறியது.', t:'ஏறியது', g:'உயர்தல்' },
+ { set:'held', s:'ஓட்டுநர் லாரியை வேகமாக ஓட்டினார்.', t:'ஓட்டினார்', g:'ஓட்டுதல்' },
+ { set:'held', s:'பட்டம் விட நூல் வாங்கினான்.', t:'நூல்', g:'நூல் (இழை)' },
+ { set:'held', s:'கட்சியின் தலைவர் கூட்டத்தில் பேசினார்.', t:'தலைவர்', g:'தலைமை' },
+ { set:'held', s:'திங்கட்கிழமை அலுவலகம் திறக்கும்.', t:'திங்கட்கிழமை', g:'திங்கட்கிழமை' }
+];
+function clean(t){ return t.replace(/[.,!?;:]/g, ''); }
+function runEval(entries, opts){
+  return EVAL_CASES.map(c => {
+    const a = analyze(c.s, entries, opts);
+    const hit = a.results.find(r => clean(r.token) === c.t);
+    const pred = hit ? hit.decision : undefined;
+    return { c, hit, pred, ok: pred === c.g };
+  });
+}
+
+</script>
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function fmt(n){ return (Math.round(n * 100) / 100).toFixed(2); }
+
+/* ---------- மொழி ---------- */
+var I18N = {
+ 'brand':['பொருள் தேடல்','Porul Thedal'],
+ 'nav.analyze':['பகுப்பாய்வு','Analyze'],'nav.method':['முறை','Method'],'nav.eval':['மதிப்பீடு','Evaluation'],'nav.dict':['அகராதி','Dictionary'],
+ 'ps.title':['ஒரே சொல்லுக்குப் பல பொருள்கள்','One word, multiple meanings'],
+ 'hero.h1':['<q>படி</q> — படிப்பா, படிக்கட்டா?','Does <q>படி</q> mean read, or stair?'],
+ 'hero.lede':['ஒரு தமிழ் வாக்கியத்தை எழுதுங்கள். சொல்லின் இலக்கண வடிவமும் சுற்றியுள்ள சொற்களும் எந்தப் பொருளைச் சுட்டுகின்றன என்று கணினி கணக்கிட்டு, அந்த முடிவுக்கான காரணத்தையும் காட்டும்.','Type a Tamil sentence. The system weighs the word’s grammatical form and the words around it, picks the meaning that fits, and shows exactly why.'],
+ 'input.label':['வாக்கியம்','Sentence'],'input.ph':['எ.கா. படிக்கட்டில் உட்கார்ந்து படித்தான்.','e.g. படிக்கட்டில் உட்கார்ந்து படித்தான்.'],
+ 'input.hint':['<kbd>Enter</kbd> அழுத்தினால் பகுப்பாய்வு; புதிய வரிக்கு <kbd>Shift</kbd>+<kbd>Enter</kbd>','<kbd>Enter</kbd> to analyze, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line'],
+ 'btn.clear':['அழி','Clear'],'btn.go':['பொருளைக் கண்டறி','Find the meaning'],'samples':['முயன்று பாருங்கள்:','Try:'],
+ 'm.h':['முறை','Method'],
+ 'm.lede':['இது ஒரு விளக்கமளிக்கக்கூடிய விதி மற்றும் சூழல் அடிப்படையிலான முறை. ஒவ்வொரு முடிவுக்கும் எந்தச் சான்று எவ்வளவு எடை கொடுத்தது என்பதைக் காட்ட முடியும்; அதனால்தான் கருப்புப் பெட்டி மாதிரியைத் தவிர்த்தோம்.','An explainable, rule-and-context approach. Every decision can be traced to the evidence behind it and how much weight each piece carried, which is why we avoided a black-box model.'],
+ 'm.s1':['சொல் பிரிப்பு','Tokenize'],'m.s1d':['வாக்கியத்தைத் தமிழ்ச் சொற்களாகப் பிரித்து, அகராதியில் உள்ள பலபொருள் சொல்லைக் கண்டறிகிறது.','Split the sentence into Tamil words and find the ones listed as ambiguous in the dictionary.'],
+ 'm.s2':['வேர் மற்றும் இலக்கணம்','Root and grammar'],'m.s2d':['விகுதியை வைத்து வினையா, பெயரா என்று பார்க்கிறது. -த்தான் வினை; -யில், -களில் வேற்றுமை உருபு.','Use the suffix to tell verb from noun: -த்தான் marks a verb, -யில் and -களில் mark case on a noun.'],
+ 'm.s3':['சூழல் சான்று','Context evidence'],'m.s3d':['அருகிலுள்ள சொற்கள் ஒவ்வொரு பொருளுக்கும் எவ்வளவு ஆதரவு தருகின்றன என்று, தூரத்துக்கு ஏற்ப எடை குறைத்துக் கணக்கிடுகிறது.','Count how strongly nearby words support each sense, with weight decaying by distance.'],
+ 'm.s4':['மதிப்பெண் மற்றும் முடிவு','Score and decide'],'m.s4d':['அதிக மதிப்பெண் பெற்ற பொருளைத் தேர்கிறது. முதல் இரண்டுக்கும் இடைவெளி குறைவென்றால் “உறுதியில்லை” என்று சொல்கிறது.','Pick the highest-scoring sense. If the top two are too close, answer “uncertain” instead of guessing.'],
+ 'm.f.h':['மதிப்பெண் சூத்திரம்','Scoring formula'],'m.r.h':['இலக்கண விதிகள்','Grammar rules'],
+ 'm.r.d':['சூழல் சொற்கள் இல்லாவிட்டாலும், சொல்லின் விகுதியே பொருளைச் சொல்லிவிடும்.','Even with no helpful context, the suffix alone often settles the meaning.'],
+ 'm.l.h':['வரம்புகளும் அடுத்த கட்டமும்','Limitations and next steps'],
+ 'e.h':['மதிப்பீடு','Evaluation'],
+ 'e.lede':['கீழே உள்ள எண்கள் இந்தப் பக்கம் திறக்கும்போதே உண்மையாகக் கணக்கிடப்படுகின்றன. விதிகளை எழுதும்போது பார்த்த வாக்கியங்கள் (dev) தனியாகவும், பார்க்காத புதிய வாக்கியங்கள் (held-out) தனியாகவும் உள்ளன.','These numbers are computed live when the page loads. Sentences seen while writing the rules (dev) are kept separate from unseen sentences (held-out).'],
+ 'e.ab.h':['ஒவ்வொரு அடுக்கும் எவ்வளவு உதவுகிறது?','How much does each layer help?'],
+ 'e.ab.d':['Ablation: அடுக்குகளை ஒவ்வொன்றாக நீக்கி, held-out துல்லியம் எப்படி மாறுகிறது.','Ablation: switch layers off and see how held-out accuracy changes.'],
+ 'e.cm.h':['“படி” குழப்ப அணி','Confusion matrix for “படி”'],
+ 'e.cm.d':['வரிசை = சரியான பொருள், நெடுவரிசை = கணினியின் கணிப்பு. மூலைவிட்டத்தில் இருந்தால் சரி.','Rows are the correct sense, columns the prediction. Everything on the diagonal is correct.'],
+ 'e.cases':['எல்லா சோதனை வாக்கியங்களையும் காட்டு','Show every test sentence'],
+ 'd.h':['அகராதி','Dictionary'],
+ 'd.lede':['கணினிக்குத் தெரிந்த பலபொருள் சொற்கள். எடுத்துக்காட்டு வாக்கியத்தைத் தொட்டால் மேலே பகுப்பாய்வு செய்யும்.','Ambiguous words the system knows. Tap an example sentence to analyze it above.'],
+ 'd.search':['சொல் அல்லது பொருளைத் தேடுங்கள்','Search a word or meaning'],
+ 'd.add.h':['புதிய சொல்லைச் சேர்','Add a new word'],
+ 'd.add.d':['ஒரு வரிக்கு ஒரு பொருள்: பொருளின் பெயர், முக்கால்புள்ளி (:), பிறகு காற்புள்ளியால் பிரித்த சூழல் சொற்கள். குறைந்தது இரண்டு பொருள்கள் வேண்டும். இந்த உலாவியில் மட்டும் சேமிக்கப்படும்.','One sense per line: the sense name, a colon, then comma-separated context words. At least two senses. Saved in this browser only.'],
+ 'd.add.word':['சொல்','Word'],'d.add.senses':['பொருள்களும் சூழல் சொற்களும்','Senses and context words'],'d.add.btn':['சொல்லைச் சேர்','Add word'],
+ 'foot.a':['பொருள் தேடல்: விளக்கமளிக்கக்கூடிய தமிழ்ச் சொற்பொருள் தேர்வு','Porul Thedal: explainable Tamil word sense disambiguation'],
+ 'foot.b':['சிக்கல் P12, ஒரே சொல்லுக்குப் பல பொருள்கள்','Problem P12, one word with multiple meanings'],
+ /* dynamic */
+ 'map.h':['சூழல் வரைபடம்','Context map'],
+ 'map.d':['ஒவ்வொரு வளைவும் ஒரு சூழல் சொல்லை இலக்குச் சொல்லுடன் இணைக்கிறது. தடிமன் = எடை.','Each arc links a context word to the target. Thicker means more weight.'],
+ 'lg.t':['இலக்குச் சொல்','Target word'],'lg.w':['தேர்ந்த பொருளை ஆதரிக்கிறது','Supports chosen sense'],'lg.o':['வேறு பொருளை ஆதரிக்கிறது','Supports another sense'],
+ 'cap.t':['இலக்கு','target'],'cap.o':['வேறு பொருள்','other sense'],
+ 'v.root':['வேர்','root'],'v.kicker':['பொருத்தமான பொருள்','Best-fitting meaning'],'v.unsure':['உறுதியில்லை','Uncertain'],
+ 'conf.high':['உறுதி: உயர்','High confidence'],'conf.medium':['உறுதி: நடுத்தரம்','Medium confidence'],'conf.low':['உறுதியில்லை','Low confidence'],
+ 'rank.h':['எல்லாப் பொருள்களின் மதிப்பெண்','Score for every sense'],
+ 'rank.more':['மீதமுள்ள {n} பொருள்களையும் காட்டு','Show {n} more senses'],'rank.less':['குறைவாகக் காட்டு','Show fewer'],
+ 'ev.h':['சான்றுகள்','Evidence'],'ev.cue':['சூழல்','context'],'ev.morph':['இலக்கணம்','grammar'],'ev.form':['வடிவம்','form'],
+ 'ev.dist':['தூரம் {d}','distance {d}'],'ev.none':['நேரடிச் சான்று இல்லை; பொதுப் பயன்பாட்டு மதிப்பு மட்டும்.','No direct evidence; only the usage prior.'],
+ 'why.cue':['{w} என்ற சூழல் சொல் “{s}” பொருளை ஆதரிக்கிறது.','The context word {w} supports “{s}”.'],
+ 'why.cues':['{w} என்ற சூழல் சொற்கள் “{s}” பொருளை ஆதரிக்கின்றன.','The context words {w} support “{s}”.'],
+ 'why.morph':['இலக்கண விதி {id}: {x}.','Grammar rule {id}: {x}.'],
+ 'why.form':['சொல்லின் வடிவமே ({t}) இந்தப் பொருளுக்குப் பொருந்துகிறது.','The word form itself ({t}) fits this sense.'],
+ 'why.close':['“{a}”, “{b}” இரண்டுக்கும் இடைவெளி {g} மட்டுமே, வரம்பு 0.6. இன்னும் சில சூழல் சொற்களைச் சேர்த்தால் முடிவு தெளிவாகும்.','“{a}” and “{b}” differ by only {g}; the threshold is 0.6. Adding a few context words will settle it.'],
+ 'why.none':['இந்த வாக்கியத்தில் சூழல் சொல்லோ இலக்கண வடிவமோ எந்தப் பொருளையும் சுட்டவில்லை. பொதுப் பயன்பாட்டை மட்டும் வைத்து ஊகிக்காமல் “உறுதியில்லை” என்கிறது.','Nothing in this sentence points to a sense. Rather than guess from general usage, the system says “uncertain”.'],
+ 'why.lead':['முன்னணி: “{a}”, இரண்டாவது “{b}”, இடைவெளி {g}.','Leader “{a}”, runner-up “{b}”, margin {g}.'],
+ 'tr.h':['படிப்படியான விளக்கம்','Step-by-step trace'],
+ 'tr.d':['கணினி இந்த முடிவுக்கு எப்படி வந்தது','How the system reached this decision'],
+ 'tr.1':['உள்ளீடு','Input'],'tr.2':['சொல் பிரிப்பு','Tokenize'],'tr.3':['இலக்குச் சொல்லும் வேரும்','Target and root'],
+ 'tr.4':['இலக்கண விதிகள்','Grammar rules'],'tr.5':['சூழல் சொற்கள்','Context words'],'tr.6':['மதிப்பெண்','Scores'],'tr.7':['முடிவு','Decision'],
+ 'tr.nomorph':['பொருந்திய விதி இல்லை','No rule matched'],'tr.nocue':['பொருந்திய சூழல் சொல் இல்லை','No context word matched'],
+ 'tr.cols':[['பொருள்','முன்','வடிவம்','இலக்கணம்','சூழல்','மொத்தம்'],['Sense','Prior','Form','Grammar','Context','Total']],
+ 'tr.dec':['இடைவெளி {g} ≥ 0.6 → “{s}” தேர்ந்தெடுக்கப்பட்டது.','Margin {g} ≥ 0.6, so “{s}” is selected.'],
+ 'tr.decu':['இடைவெளி {g} < 0.6 அல்லது சான்று இல்லை → உறுதியில்லை.','Margin {g} < 0.6 or no evidence, so the answer is uncertain.'],
+ 'json':['முடிவை JSON ஆக நகலெடு','Copy result as JSON'],'copied':['நகலெடுக்கப்பட்டது','Copied'],
+ 'found':['{n} பலபொருள் சொல் கண்டறியப்பட்டது','{n} ambiguous word found'],'founds':['{n} பலபொருள் சொற்கள் கண்டறியப்பட்டன','{n} ambiguous words found'],
+ 'empty.start':['மேலே ஒரு வாக்கியத்தை எழுதுங்கள், அல்லது ஓர் எடுத்துக்காட்டைத் தேர்ந்தெடுங்கள்.','Type a sentence above, or pick an example.'],
+ 'empty.none':['இந்த வாக்கியத்தில் அகராதியில் உள்ள பலபொருள் சொல் இல்லை. <b>படி, ஆறு, மாலை, கால், அடி</b> போன்ற சொல் உள்ள வாக்கியத்தை முயலுங்கள், அல்லது கீழே அகராதியில் புதிய சொல்லைச் சேர்க்கவும்.','No dictionary word found in this sentence. Try one containing <b>படி, ஆறு, மாலை, கால், அடி</b>, or add the word in the dictionary below.'],
+ 'e.held':['Held-out துல்லியம்','Held-out accuracy'],'e.dev':['Dev துல்லியம்','Dev accuracy'],'e.n':['சோதனை வாக்கியங்கள்','Test sentences'],'e.words':['சொற்கள் / பொருள்கள்','Words / senses'],
+ 'e.cfg':['அமைப்பு','Configuration'],'e.acc':['Held-out','Held-out'],
+ 'ab.prior':['பொதுப் பயன்பாடு மட்டும்','Prior only'],'ab.form':['+ சொல் வடிவம்','+ Word form'],'ab.morph':['+ இலக்கண விதி','+ Grammar rules'],
+ 'ab.fm':['வடிவம் + இலக்கணம்','Form + grammar'],'ab.ctx':['சூழல் மட்டும்','Context only'],'ab.cf':['சூழல் + வடிவம்','Context + form'],'ab.full':['முழு முறை','Full method'],
+ 'L.form':['வடிவம்','form'],'L.morph':['இலக்கணம்','grammar'],'L.ctx':['சூழல்','context'],
+ 'cm.gold':['சரியானது ↓  கணிப்பு →','Gold ↓  Predicted →'],
+ 'c.set':['தொகுப்பு','Set'],'c.s':['வாக்கியம்','Sentence'],'c.g':['சரியான பொருள்','Gold'],'c.p':['கணிப்பு','Prediction'],'c.r':['நிலை','Result'],
+ 'c.ok':['சரி','Correct'],'c.bad':['தவறு','Wrong'],'c.nf':['கண்டறியவில்லை','Not found'],
+ 'rt.id':['விதி','Rule'],'rt.p':['வடிவம்','Pattern'],'rt.s':['பொருள்','Sense'],'rt.e':['எடுத்துக்காட்டு','Example'],
+ 'd.senses':['{n} பொருள்கள்','{n} senses'],'d.cues':['சூழல் சொற்கள்: ','Context words: '],'d.mine':['நீங்கள் சேர்த்தது','added by you'],
+ 'd.remove':['நீக்கு','Remove'],'d.nomatch':['பொருந்தும் சொல் இல்லை.','No matching word.'],
+ 'add.ok':['“{w}” சேர்க்கப்பட்டது. இனி வாக்கியத்தில் எழுதிச் சோதிக்கலாம்.','Added “{w}”. Try it in a sentence.'],
+ 'add.ta':['சொல்லைத் தமிழில் எழுதுங்கள்.','Write the word in Tamil.'],
+ 'add.two':['குறைந்தது இரண்டு பொருள்களை “பெயர் : சொற்கள்” என்ற வடிவில் எழுதுங்கள்.','Enter at least two senses as “name : words”.'],
+ 'custom.d':['நீங்கள் சேர்த்த பொருள்','Sense you added']
+};
+var lang = 'ta';
+try { var sl = localStorage.getItem('porul.lang'); if (sl === 'en' || sl === 'ta') lang = sl; } catch(e){}
+function t(k, vars){
+  var v = I18N[k]; if (!v) return k;
+  var s = v[lang === 'en' ? 1 : 0];
+  if (vars && typeof s === 'string') Object.keys(vars).forEach(function(n){ s = s.split('{' + n + '}').join(vars[n]); });
+  return s;
+}
+var MORPH_EN = {
+  M1:'a verb suffix (-த்தான், -க்கிறாள், -ப்பாள், -ப்பு) means reading or studying',
+  M2:'a case marker or plural (-யில், -களில்) on the noun means a step or stair',
+  M3:'-படி fused to a noun or participle means “according to”',
+  M4:'the form படிந்- means dust or residue settling',
+  M5:'“ஒரு படி எடு” (take one படி) means a copy'
+};
+function gloss(sense){ return lang === 'en' ? (SENSE_EN[sense.n] || sense.d) : sense.d; }
+function ruleText(rule){ return lang === 'en' ? MORPH_EN[rule.ruleId || rule.id] : rule.explanation; }
+
+/* ---------- அகராதி (built-in + user) ---------- */
+var KEY = 'porul.custom', custom = [];
+try { custom = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(custom)) custom = []; } catch(e){ custom = []; }
+function saveCustom(){ try { localStorage.setItem(KEY, JSON.stringify(custom)); } catch(e){} }
+function entries(){
+  return BUILTIN.concat(custom.map(function(c){
+    return { w:c.w, custom:true, stem:stemOf(c.w), senses:c.senses.map(function(s){
+      return { n:s.n, d:t('custom.d'), ex:'', prior:.3, forms:[], cues:s.cues.map(stemOf) };
+    })};
+  }));
+}
+
+/* ---------- பகுப்பாய்வு வரைதல் ---------- */
+var last = null;
+function render(text){
+  var out = $('results');
+  var s = (text || '').trim();
+  markSample(s);
+  if (!s){ last = null; out.innerHTML = '<div class="empty">' + t('empty.start') + '</div>'; return; }
+  var a = analyze(s, entries());
+  last = { text:s, a:a };
+  if (!a.results.length){ out.innerHTML = mapPanel(a, true) + '<div class="empty">' + t('empty.none') + '</div>'; drawArcs(); return; }
+  var html = mapPanel(a, false);
+  a.results.forEach(function(r, k){ html += verdictPanel(r, k, a); });
+  html += '<div class="foot-actions"><button class="btn quiet small" type="button" id="jsonBtn">' + t('json') + '</button></div>';
+  out.innerHTML = html;
+  drawArcs();
+  out.querySelectorAll('[data-more]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var ul = $('rank' + b.dataset.more), open = ul.dataset.open === '1';
+      ul.dataset.open = open ? '0' : '1';
+      ul.querySelectorAll('li.extra').forEach(function(li){ li.hidden = open; });
+      b.textContent = open ? t('rank.more', { n: b.dataset.n }) : t('rank.less');
+    });
+  });
+  $('jsonBtn').addEventListener('click', copyJson);
+}
+
+/* role of every token, for the context map */
+function roles(a){
+  var r = {};
+  a.results.forEach(function(res){
+    r[res.idx] = { kind:'tgt', cap:t('cap.t') + (res.root !== res.token ? ' · ' + res.root : '') };
+  });
+  a.results.forEach(function(res){
+    res.order.forEach(function(o, oi){
+      o.evidence.forEach(function(e){
+        if (e.kind !== 'cue' || (r[e.tokenIndex] && r[e.tokenIndex].kind === 'tgt')) return;
+        var win = oi === 0 && res.decision;
+        var cur = r[e.tokenIndex];
+        if (cur && cur.kind === 'cw') return;
+        if (win) r[e.tokenIndex] = { kind:'cw', cap:o.sense.n };
+        else if (!cur) r[e.tokenIndex] = { kind:'co', cap:o.sense.n };
+      });
+    });
+  });
+  return r;
+}
+function mapPanel(a, none){
+  var rl = roles(a);
+  var toks = a.tokens.map(function(tk, i){
+    var ro = rl[i], cls = ro ? ro.kind : 'plain';
+    return '<div class="tok ' + cls + '" data-i="' + i + '"><span class="w" lang="ta">' + esc(tk.t) + '</span><span class="cap">' + (ro ? esc(ro.cap) : '&nbsp;') + '</span></div>';
+  }).join('');
+  var cnt = a.results.length;
+  return '<div class="panel"><div class="panel-h"><h2 style="font-size:1.2rem">' + t('map.h') + '</h2>' +
+    (none ? '' : '<span class="hint">' + esc(t(cnt === 1 ? 'found' : 'founds', { n:cnt })) + '</span>') + '</div>' +
+    (none ? '' : '<p class="hint">' + t('map.d') + '</p>') +
+    '<div class="map-scroll"><div class="map" id="map"><svg id="arcs" aria-hidden="true"></svg><div class="toks" id="toks">' + toks + '</div></div></div>' +
+    (none ? '' : '<div class="legend"><span><i class="sw t"></i>' + t('lg.t') + '</span><span><i class="sw"></i>' + t('lg.w') + '</span><span><i class="sw o"></i>' + t('lg.o') + '</span></div>') +
+    '</div>';
+}
+function drawArcs(){
+  var map = $('map'), svg = $('arcs'), toks = $('toks');
+  if (!map || !last) return;
+  var a = last.a, arcs = [];
+  a.results.forEach(function(res){
+    res.order.forEach(function(o, oi){
+      o.evidence.forEach(function(e){
+        if (e.kind === 'cue') arcs.push({ from:e.tokenIndex, to:res.idx, w:e.weight, win: oi === 0 && !!res.decision });
+      });
+    });
+  });
+  toks.style.paddingTop = '0px';
+  var nodes = toks.querySelectorAll('.tok .w');
+  var mrect = map.getBoundingClientRect();
+  var cx = function(i){ var r = nodes[i].getBoundingClientRect(); return r.left - mrect.left + r.width / 2; };
+  var maxH = 0;
+  arcs.forEach(function(ar){
+    ar.x1 = cx(ar.from); ar.x2 = cx(ar.to);
+    ar.h = Math.max(22, Math.min(96, Math.abs(ar.x2 - ar.x1) * .32)) + (ar.win ? 0 : 6);
+    maxH = Math.max(maxH, ar.h);
+  });
+  var top = arcs.length ? maxH + 18 : 0;
+  toks.style.paddingTop = top + 'px';
+  svg.setAttribute('width', map.scrollWidth);
+  svg.setAttribute('height', top + 4);
+  var y = top + 2;
+  arcs.sort(function(p, q){ return p.win - q.win; });
+  svg.innerHTML = arcs.map(function(ar){
+    var hy = y - ar.h / .75;
+    var d = 'M' + ar.x1 + ' ' + y + ' C' + ar.x1 + ' ' + hy + ' ' + ar.x2 + ' ' + hy + ' ' + ar.x2 + ' ' + y;
+    var sw = ar.win ? (1.4 + ar.w * 1.1) : 1.4;
+    var mx = (ar.x1 + ar.x2) / 2, my = y - ar.h - 5;
+    return '<path class="arc ' + (ar.win ? 'win' : 'oth') + '" d="' + d + '" stroke-width="' + sw.toFixed(2) + '"/>' +
+      '<circle class="arc-dot" cx="' + ar.x1 + '" cy="' + y + '" r="3.2" style="stroke:var(' + (ar.win ? '--win' : '--other') + ')"/>' +
+      (ar.win ? '<text class="arc-w" x="' + mx + '" y="' + my + '" text-anchor="middle">+' + fmt(ar.w) + '</text>' : '');
+  }).join('');
+}
+
+function verdictPanel(r, k, a){
+  var best = r.order[0], second = r.order[1], unsure = !r.decision;
+  var cues = best.evidence.filter(function(e){ return e.kind === 'cue'; });
+  var morph = best.evidence.filter(function(e){ return e.kind === 'morph'; });
+  var form = best.evidence.filter(function(e){ return e.kind === 'form'; });
+  var why = [];
+  if (unsure){
+    if (!best.evidence.length && (!second || !second.evidence.length)) why.push(t('why.none'));
+    else why.push(t('why.close', { a:esc(best.sense.n), b:esc(second ? second.sense.n : '-'), g:fmt(r.gap) }));
+  } else {
+    if (cues.length) why.push(t(cues.length > 1 ? 'why.cues' : 'why.cue', { w:cues.map(function(e){ return '<b lang="ta">' + esc(e.text) + '</b>'; }).join(', '), s:esc(best.sense.n) }));
+    morph.forEach(function(m){ why.push(t('why.morph', { id:m.ruleId, x:esc(ruleText(m)) })); });
+    if (form.length && !morph.length) why.push(t('why.form', { t:'<b lang="ta">' + esc(r.token) + '</b>' }));
+    if (second) why.push(t('why.lead', { a:esc(best.sense.n), b:esc(second.sense.n), g:fmt(r.gap) }));
+  }
+  var rules = r.morphMatches.map(function(m){ return '<span class="rule" title="' + esc(ruleText(m)) + '">' + m.id + '</span>'; }).join(' ');
+  var SHOW = 4, extra = r.order.length - SHOW;
+  var rank = r.order.map(function(o, i){
+    var pc = Math.round(o.p * 100);
+    return '<li class="' + (i === 0 ? 'top' : '') + (i === 0 && unsure ? ' unsure' : '') + (i >= SHOW ? ' extra' : '') + '"' + (i >= SHOW ? ' hidden' : '') + '>' +
+      '<span class="nm" lang="ta">' + esc(o.sense.n) + (lang === 'en' && SENSE_EN[o.sense.n] ? ' <span class="gl">' + esc(SENSE_EN[o.sense.n]) + '</span>' : '') + '</span>' +
+      '<span class="sc">' + fmt(o.score) + '</span><span class="bar-t"><i style="width:' + Math.max(2, pc) + '%"></i></span></li>';
+  }).join('');
+  var ev = best.evidence.length ? best.evidence.map(function(e){
+    var kc = e.kind === 'cue' ? '' : e.kind === 'morph' ? ' m' : ' f';
+    var kl = t(e.kind === 'cue' ? 'ev.cue' : e.kind === 'morph' ? 'ev.morph' : 'ev.form');
+    var detail = e.kind === 'cue' ? '<span lang="ta">' + esc(e.text) + '</span> <span class="hint">' + t('ev.dist', { d:e.d }) + '</span>'
+      : e.kind === 'morph' ? e.ruleId + ': ' + esc(ruleText(e)) : '<span lang="ta">' + esc(e.text) + '</span>';
+    return '<li><span class="k' + kc + '">' + kl + '</span><span>' + detail + '</span><span class="n">+' + fmt(e.weight) + '</span></li>';
+  }).join('') : '<li><span></span><span class="hint">' + t('ev.none') + '</span><span></span></li>';
+
+  return '<article class="panel"><div class="verdict">' +
+    '<div class="v-head"><span class="v-tok" lang="ta">' + esc(r.token) + '</span><span class="v-root">' + t('v.root') + ': <span lang="ta">' + esc(r.root) + '</span></span>' + rules + '</div>' +
+    '<div>' +
+      '<p class="kicker">' + t('v.kicker') + '</p>' +
+      '<p class="v-sense' + (unsure ? ' unsure' : '') + '" lang="ta">' + (unsure ? esc(t('v.unsure')) : esc(best.sense.n)) + '</p>' +
+      (unsure ? '' : '<p class="v-gloss">' + esc(gloss(best.sense)) + '</p>') +
+      '<span class="conf ' + r.level + '"><span class="meter"><i></i><i></i><i></i></span>' + t('conf.' + r.level) + '</span>' +
+      '<p class="why">' + why.join(' ') + '</p>' +
+      '<h3 style="font-size:1rem;margin-top:18px">' + t('ev.h') + '</h3><ul class="ev">' + ev + '</ul>' +
+    '</div>' +
+    '<div><h3 style="font-size:1rem;margin-bottom:12px">' + t('rank.h') + '</h3><ul class="rank" id="rank' + k + '">' + rank + '</ul>' +
+      (extra > 0 ? '<button class="btn quiet small more" type="button" data-more="' + k + '" data-n="' + extra + '">' + t('rank.more', { n:extra }) + '</button>' : '') +
+    '</div>' +
+    '</div>' + tracePanel(r, a, k) + '</article>';
+}
+
+function tracePanel(r, a, k){
+  var tokHtml = a.tokens.map(function(tk, i){ return '<span class="tk' + (i === r.idx ? ' t' : '') + '" lang="ta">' + esc(tk.t) + '</span>'; }).join('');
+  var morph = r.morphMatches.length ? r.morphMatches.map(function(m){ return '<b style="display:inline">' + m.id + '</b> ' + esc(ruleText(m)); }).join('<br>') : t('tr.nomorph');
+  var cueList = [];
+  r.order.forEach(function(o){ o.evidence.forEach(function(e){ if (e.kind === 'cue') cueList.push('<span lang="ta">' + esc(e.text) + '</span> → ' + esc(o.sense.n) + ' (+' + fmt(e.weight) + ')'); }); });
+  var cols = t('tr.cols');
+  var rows = r.order.map(function(o, i){
+    var sum = function(kind){ return o.evidence.filter(function(e){ return e.kind === kind; }).reduce(function(s, e){ return s + e.weight; }, 0); };
+    return '<tr class="' + (i === 0 && r.decision ? 'top' : '') + '"><td lang="ta">' + esc(o.sense.n) + '</td><td class="n">' + fmt(o.prior) + '</td><td class="n">' + fmt(sum('form')) + '</td><td class="n">' + fmt(sum('morph')) + '</td><td class="n">' + fmt(sum('cue')) + '</td><td class="n">' + fmt(o.score) + '</td></tr>';
+  }).join('');
+  var dec = r.decision ? t('tr.dec', { g:fmt(r.gap), s:esc(r.decision) }) : t('tr.decu', { g:fmt(r.gap) });
+  return '<details class="trace" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)"' + (k === 0 ? ' open' : '') + '>' +
+    '<summary><h3>' + t('tr.h') + '</h3><span class="hint">' + t('tr.d') + '</span></summary>' +
+    '<ol class="steps">' +
+      '<li><b>' + t('tr.1') + '</b><span class="d" lang="ta">' + esc(last.text) + '</span></li>' +
+      '<li><b>' + t('tr.2') + '</b><span class="d">' + tokHtml + '</span></li>' +
+      '<li><b>' + t('tr.3') + '</b><span class="d"><span lang="ta">' + esc(r.token) + '</span> → <span lang="ta">' + esc(r.root) + '</span> (' + r.entry.senses.length + ' ' + (lang === 'en' ? 'candidate senses' : 'சாத்தியமான பொருள்கள்') + ')</span></li>' +
+      '<li><b>' + t('tr.4') + '</b><span class="d">' + morph + '</span></li>' +
+      '<li><b>' + t('tr.5') + '</b><span class="d">' + (cueList.length ? cueList.join('<br>') : t('tr.nocue')) + '</span></li>' +
+      '<li><b>' + t('tr.6') + '</b><div class="tbl-scroll"><table class="mini"><thead><tr>' + cols.map(function(c, i){ return '<th' + (i ? ' style="text-align:right"' : '') + '>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div></li>' +
+      '<li><b>' + t('tr.7') + '</b><span class="d">' + dec + '</span></li>' +
+    '</ol></details>';
+}
+
+function copyJson(){
+  if (!last) return;
+  var data = { sentence:last.text, targets:last.a.results.map(function(r){
+    return { token:r.token, root:r.root, decision:r.decision, confidence:r.level, margin:+fmt(r.gap),
+      rules:r.morphMatches.map(function(m){ return m.id; }),
+      senses:r.order.map(function(o){ return { sense:o.sense.n, gloss:SENSE_EN[o.sense.n] || null, score:+fmt(o.score), share:+o.p.toFixed(3),
+        evidence:o.evidence.map(function(e){ return { kind:e.kind, text:e.text, weight:+fmt(e.weight), distance:e.d, rule:e.ruleId }; }) }; }) };
+  }) };
+  var txt = JSON.stringify(data, null, 2);
+  var done = function(){ toast(t('copied')); };
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt); done(); });
+  else { fallbackCopy(txt); done(); }
+}
+function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch(e){} ta.remove(); }
+var tt;
+function toast(m){ var el = $('toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ el.classList.remove('show'); }, 1600); }
+
+/* ---------- எடுத்துக்காட்டுகள் ---------- */
+var SAMPLES = [
+  'படிக்கட்டில் உட்கார்ந்து படித்தான்.',
+  'மாணவி நூலகத்தில் அமர்ந்து கதையைப் படித்தாள்.',
+  'பாட்டி இரண்டு படி நெல் அளந்தார்.',
+  'சான்றிதழின் ஒரு படி எடு.',
+  'அரசு உத்தரவுப்படி கடைகள் மூடப்பட்டன.',
+  'பாத்திரத்தில் தூசி படிந்தது.',
+  'காலையில் எழுந்தவுடன் அவளுக்குக் காலில் வலி ஏற்பட்டது.',
+  'படி.'
+];
+function drawSamples(){
+  var box = $('samples');
+  box.querySelectorAll('.chip').forEach(function(c){ c.remove(); });
+  SAMPLES.forEach(function(s){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.lang = 'ta'; b.textContent = s; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function(){ run(s); });
+    box.appendChild(b);
+  });
+}
+function markSample(s){ document.querySelectorAll('#samples .chip').forEach(function(c){ c.setAttribute('aria-pressed', c.textContent === s ? 'true' : 'false'); }); }
+function run(s){ $('sentence').value = s; render(s); }
+
+/* ---------- முறை ---------- */
+function drawMethod(){
+  var en = lang === 'en';
+  $('formula').innerHTML = en
+    ? '<var>score</var>(s) = <var>prior</var>(s) + Σ <var>form</var>(s) + Σ <var>rule</var>(s) + Σ<sub>cues</sub> 2 ⁄ (1 + 0.12·(d − 1))'
+    : '<var>மதிப்பெண்</var>(s) = <var>முன்</var>(s) + Σ <var>வடிவம்</var>(s) + Σ <var>விதி</var>(s) + Σ<sub>சூழல்</sub> 2 ⁄ (1 + 0.12·(d − 1))';
+  $('formulaNotes').innerHTML = (en ? [
+    '<b>prior</b>: how common the sense is in general usage (0.1 to 0.6).',
+    '<b>form / rule</b>: weight from the word’s own shape and grammar rules M1 to M5.',
+    '<b>d</b>: distance in words between the context word and the target. A cue right next to the word adds 2.0; five words away it adds about 1.35.',
+    '<b>Decision</b>: margin between the top two ≥ 2 is high confidence, ≥ 0.6 medium, otherwise uncertain.'
+  ] : [
+    '<b>முன்</b>: பொதுப் பயன்பாட்டில் அந்தப் பொருள் எவ்வளவு அடிக்கடி வருகிறது (0.1 முதல் 0.6).',
+    '<b>வடிவம் / விதி</b>: சொல்லின் வடிவமும் M1–M5 இலக்கண விதிகளும் தரும் எடை.',
+    '<b>d</b>: சூழல் சொல்லுக்கும் இலக்குச் சொல்லுக்கும் இடையேயான சொல் தூரம். அடுத்த சொல் என்றால் 2.0; ஐந்து சொல் தள்ளி என்றால் சுமார் 1.35.',
+    '<b>முடிவு</b>: முதல் இரண்டுக்கும் இடைவெளி ≥ 2 என்றால் உயர் உறுதி, ≥ 0.6 நடுத்தரம், இல்லையேல் உறுதியில்லை.'
+  ]).map(function(x){ return '<li>' + x + '</li>'; }).join('');
+  var EX = { M1:'படித்தார், படிப்பாள்', M2:'படிகளின், மாடிப்படியில்', M3:'உத்தரவுப்படி, சொன்னபடி', M4:'படிந்திருந்தது', M5:'ஒரு படி எடு' };
+  $('rulesTable').innerHTML = '<thead><tr><th>' + t('rt.id') + '</th><th>' + t('rt.p') + '</th><th>' + t('rt.s') + '</th><th>' + t('rt.e') + '</th></tr></thead><tbody>' +
+    MORPH_RULES.map(function(m){ return '<tr><td><span class="rule">' + m.id + '</span></td><td>' + esc(en ? MORPH_EN[m.id] : m.label) + '</td><td class="ta" lang="ta">' + esc(m.sense) + '</td><td class="ta" lang="ta">' + esc(EX[m.id]) + '</td></tr>'; }).join('') + '</tbody>';
+  $('limits').innerHTML = (en ? [
+    '<b>Coverage</b>: only words in the dictionary are handled; new words can be added below, and the rules are written for படி.',
+    '<b>Sandhi</b>: fused forms are matched by suffix patterns, not a full sandhi splitter.',
+    '<b>Test size</b>: the demo set is small. A final benchmark needs 100+ sentences labelled by two annotators.',
+    '<b>Next step</b>: a hybrid that adds MuRIL or IndicBERT embeddings as one more scored layer, while keeping the rule evidence visible.'
+  ] : [
+    '<b>பரப்பு</b>: அகராதியில் உள்ள சொற்களுக்கு மட்டுமே; புதிய சொல்லைக் கீழே சேர்க்கலாம். இலக்கண விதிகள் “படி”க்காக எழுதப்பட்டவை.',
+    '<b>புணர்ச்சி</b>: இணைந்த சொற்கள் விகுதி வடிவங்களால் பொருத்தப்படுகின்றன; முழுமையான புணர்ச்சிப் பிரிப்பான் இல்லை.',
+    '<b>சோதனை அளவு</b>: demo தொகுப்பு சிறியது. இறுதி benchmark-க்கு இருவர் குறியிட்ட 100+ வாக்கியங்கள் தேவை.',
+    '<b>அடுத்த கட்டம்</b>: MuRIL / IndicBERT embeddings-ஐ இன்னொரு மதிப்பெண் அடுக்காகச் சேர்க்கும் hybrid முறை; விதிச் சான்றுகள் தொடர்ந்து தெரியும்.'
+  ]).map(function(x){ return '<li>' + x + '</li>'; }).join('');
+}
+
+/* ---------- மதிப்பீடு ---------- */
+function acc(rows, set){ var r = rows.filter(function(x){ return !set || x.c.set === set; }); var c = r.filter(function(x){ return x.ok; }).length; return { c:c, n:r.length, p:r.length ? c / r.length : 0 }; }
+function drawEval(){
+  var es = BUILTIN; /* evaluation uses the built-in dictionary only */
+  var rows = runEval(es, ALL_LAYERS);
+  var held = acc(rows, 'held'), dev = acc(rows, 'dev');
+  var nSenses = es.reduce(function(s, e){ return s + e.senses.length; }, 0);
+  $('scorebar').innerHTML =
+    '<div><div class="v good">' + Math.round(held.p * 100) + '%</div><div class="l">' + t('e.held') + ' (' + held.c + '/' + held.n + ')</div></div>' +
+    '<div><div class="v">' + Math.round(dev.p * 100) + '%</div><div class="l">' + t('e.dev') + ' (' + dev.c + '/' + dev.n + ')</div></div>' +
+    '<div><div class="v">' + rows.length + '</div><div class="l">' + t('e.n') + '</div></div>' +
+    '<div><div class="v">' + es.length + ' <small>/ ' + nSenses + '</small></div><div class="l">' + t('e.words') + '</div></div>';
+
+  var CFG = [
+    ['ab.prior', {}], ['ab.form', { form:true }], ['ab.morph', { morph:true }], ['ab.fm', { form:true, morph:true }],
+    ['ab.ctx', { context:true }], ['ab.cf', { context:true, form:true }], ['ab.full', ALL_LAYERS]
+  ];
+  $('ablation').innerHTML = '<thead><tr><th>' + t('e.cfg') + '</th><th></th><th class="num">' + t('e.acc') + '</th></tr></thead><tbody>' + CFG.map(function(cf, i){
+    var h = acc(runEval(es, cf[1]), 'held');
+    var L = ['form', 'morph', 'context'].map(function(k){ return '<span class="' + (cf[1][k] ? 'on' : '') + '">' + t('L.' + (k === 'context' ? 'ctx' : k)) + '</span>'; }).join('');
+    return '<tr class="' + (i === CFG.length - 1 ? 'full' : '') + '"><td>' + t(cf[0]) + '<br><span class="layers">' + L + '</span></td><td><div class="track"><i style="width:' + Math.max(1, h.p * 100) + '%"></i></div></td><td class="num">' + Math.round(h.p * 100) + '%<br><span class="hint">' + h.c + '/' + h.n + '</span></td></tr>';
+  }).join('') + '</tbody>';
+
+  /* confusion matrix for படி */
+  var padi = es[0], UNC = '—';
+  var pr = rows.filter(function(x){ return x.hit && x.hit.entry.w === 'படி'; });
+  var labels = []; pr.forEach(function(x){ [x.c.g, x.pred].forEach(function(l){ var k = l == null ? UNC : l; if (labels.indexOf(k) < 0) labels.push(k); }); });
+  var orderIdx = function(l){ var i = padi.senses.findIndex(function(s){ return s.n === l; }); return i < 0 ? 99 : i; };
+  labels.sort(function(p, q){ return orderIdx(p) - orderIdx(q); });
+  var M = {}; pr.forEach(function(x){ var g = x.c.g == null ? UNC : x.c.g, p = x.pred == null ? UNC : x.pred; M[g + '|' + p] = (M[g + '|' + p] || 0) + 1; });
+  var lab = function(l){ return l === UNC ? t('v.unsure') : l; };
+  $('confusion').innerHTML = '<thead><tr><th style="writing-mode:horizontal-tb;transform:none;height:auto;vertical-align:bottom" class="hint">' + t('cm.gold') + '</th>' + labels.map(function(l){ return '<th lang="ta" title="' + esc(lab(l)) + '">' + esc(lab(l)) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    labels.map(function(g){ return '<tr><th lang="ta">' + esc(lab(g)) + '</th>' + labels.map(function(p){ var v = M[g + '|' + p] || 0; return '<td class="' + (v ? (g === p ? 'diag' : 'err') : 'zero') + '">' + v + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>';
+
+  $('caseTable').innerHTML = '<thead><tr><th>' + t('c.set') + '</th><th>' + t('c.s') + '</th><th>' + t('c.g') + '</th><th>' + t('c.p') + '</th><th>' + t('c.r') + '</th></tr></thead><tbody>' +
+    rows.map(function(x){
+      var g = x.c.g == null ? t('v.unsure') : x.c.g, p = x.pred === undefined ? t('c.nf') : x.pred == null ? t('v.unsure') : x.pred;
+      return '<tr><td>' + x.c.set + '</td><td class="ta" lang="ta"><button class="try" type="button" data-s="' + esc(x.c.s) + '">' + esc(x.c.s).replace(esc(x.c.t), '<b>' + esc(x.c.t) + '</b>') + '</button></td><td class="ta" lang="ta">' + esc(g) + '</td><td class="ta" lang="ta">' + esc(p) + '</td><td class="' + (x.ok ? 'ok' : 'bad') + '">' + t(x.ok ? 'c.ok' : 'c.bad') + '</td></tr>';
+    }).join('') + '</tbody>';
+  $('caseTable').querySelectorAll('.try').forEach(function(b){ b.addEventListener('click', function(){ run(b.dataset.s); scrollTop(); }); });
+}
+
+/* ---------- அகராதி ---------- */
+function drawDict(){
+  var q = ($('dictSearch').value || '').trim().toLowerCase();
+  var box = $('dict'); box.innerHTML = '';
+  var list = entries().filter(function(e){
+    if (!q) return true;
+    return e.w.indexOf(q) >= 0 || e.senses.some(function(s){ return s.n.indexOf(q) >= 0 || (SENSE_EN[s.n] || '').toLowerCase().indexOf(q) >= 0 || (s.d || '').indexOf(q) >= 0; });
+  });
+  if (!list.length){ box.innerHTML = '<p class="hint">' + t('d.nomatch') + '</p>'; return; }
+  list.forEach(function(e){
+    var d = document.createElement('details');
+    if (q) d.open = true;
+    d.innerHTML = '<summary><span class="wd" lang="ta">' + esc(e.w) + '</span>' + (e.custom ? '<span class="hint">' + t('d.mine') + '</span>' : '') + '<span class="ct">' + t('d.senses', { n:e.senses.length }) + '</span></summary>';
+    var ul = document.createElement('ul');
+    e.senses.forEach(function(s){
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="sn" lang="ta">' + esc(s.n) + '</span>' + (lang === 'en' && SENSE_EN[s.n] ? ' <span class="hint">' + esc(SENSE_EN[s.n]) + '</span>' : '') + '<span class="sd" lang="ta">' + esc(s.d) + '</span>';
+      if (s.ex){
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'try'; b.lang = 'ta'; b.textContent = s.ex;
+        b.addEventListener('click', function(){ run(s.ex); scrollTop(); });
+        li.appendChild(b);
+      } else if (s.cues && s.cues.length){
+        li.insertAdjacentHTML('beforeend', '<span class="sd">' + t('d.cues') + esc(s.cues.join(', ')) + '</span>');
+      }
+      ul.appendChild(li);
+    });
+    d.appendChild(ul);
+    box.appendChild(d);
+  });
+}
+function drawMine(){
+  var m = $('mine'); m.innerHTML = '';
+  custom.forEach(function(c, i){
+    var chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = '<b lang="ta">' + esc(c.w) + '</b> (' + t('d.senses', { n:c.senses.length }) + ')';
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'x'; x.textContent = t('d.remove');
+    x.addEventListener('click', function(){ custom.splice(i, 1); saveCustom(); drawMine(); drawDict(); render($('sentence').value); });
+    chip.appendChild(x); m.appendChild(chip);
+  });
+}
+$('addForm').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var msg = $('addMsg'), w = $('cwWord').value.trim();
+  var senses = [];
+  $('cwSenses').value.split(/\n+/).forEach(function(l){
+    var k = l.indexOf(':'); if (k < 1) return;
+    var n = l.slice(0, k).trim(), cues = l.slice(k + 1).split(/[,،]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (n && cues.length) senses.push({ n:n, cues:cues });
+  });
+  msg.className = 'msg err';
+  if (!TAMIL_RE.test(w)){ msg.textContent = t('add.ta'); return; }
+  if (senses.length < 2){ msg.textContent = t('add.two'); return; }
+  custom = custom.filter(function(c){ return c.w !== w; });
+  custom.push({ w:w, senses:senses }); saveCustom(); drawMine(); drawDict();
+  msg.className = 'msg'; msg.textContent = t('add.ok', { w:w });
+  $('cwWord').value = ''; $('cwSenses').value = '';
+});
+
+/* ---------- மொழி / தோற்றம் / கட்டுப்பாடுகள் ---------- */
+function applyLang(){
+  document.documentElement.lang = lang === 'en' ? 'en' : 'ta';
+  document.querySelectorAll('[data-i18n]').forEach(function(el){ el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-html]').forEach(function(el){ el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-lang]').forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.lang === lang ? 'true' : 'false'); });
+  drawMethod(); drawEval(); drawDict(); drawMine();
+  render($('sentence').value);
+}
+document.querySelectorAll('[data-lang]').forEach(function(b){
+  b.addEventListener('click', function(){ lang = b.dataset.lang; try { localStorage.setItem('porul.lang', lang); } catch(e){} applyLang(); });
+});
+var root = document.documentElement;
+function isDark(){ var a = root.getAttribute('data-theme'); return a ? a === 'dark' : (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
+function setMeta(){ document.querySelector('meta[name="theme-color"]').content = isDark() ? '#10141F' : '#EEF0F3'; }
+try { var st = localStorage.getItem('porul.theme'); if (st === 'dark' || st === 'light') root.setAttribute('data-theme', st); } catch(e){}
+setMeta();
+$('themeBtn').addEventListener('click', function(){
+  var next = isDark() ? 'light' : 'dark';
+  root.setAttribute('data-theme', next); setMeta();
+  try { localStorage.setItem('porul.theme', next); } catch(e){}
+});
+$('goBtn').addEventListener('click', function(){ render($('sentence').value); });
+$('clearBtn').addEventListener('click', function(){ $('sentence').value = ''; render(''); $('sentence').focus(); });
+$('sentence').addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); render($('sentence').value); } });
+$('dictSearch').addEventListener('input', drawDict);
+function scrollTop(){ window.scrollTo({ top:0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }
+
+/* active nav item */
+if ('IntersectionObserver' in window){
+  var links = document.querySelectorAll('.nav a');
+  var io = new IntersectionObserver(function(ents){
+    ents.forEach(function(en){
+      if (!en.isIntersecting) return;
+      var id = en.target.id;
+      links.forEach(function(a){ a.setAttribute('aria-current', a.getAttribute('href') === '#' + id ? 'true' : 'false'); });
+    });
+  }, { rootMargin:'-45% 0px -50% 0px' });
+  ['analyze', 'method', 'evaluation', 'dictionary'].forEach(function(id){ io.observe($(id)); });
+}
+var rz; window.addEventListener('resize', function(){ clearTimeout(rz); rz = setTimeout(drawArcs, 80); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawArcs);
+
+drawSamples();
+$('sentence').value = SAMPLES[0];
+applyLang();
+})();
+
+</script>
+</body>
+</html>
